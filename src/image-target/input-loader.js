@@ -36,7 +36,7 @@ class InputLoader {
     });
   }
 
-  // input is instance of HTMLVideoElement or HTMLImageElement
+  // input is instance of HTMLVideoElement, HTMLImageElement, or HTMLCanvasElement
   loadInput(input) {
     const context = this.context;
     context.clearRect(0, 0, this.context.canvas.width, this.context.canvas.height);
@@ -51,10 +51,14 @@ class InputLoader {
       context.translate(x, y); // move the context origin to the center of the image
       context.rotate(angleInDegrees * Math.PI / 180); // rotate the context
 
-      // draw the image with its center at the origin
+      // Draw input at its natural size (no scaling)
+      // If input is downsampled canvas, it matches the internal canvas size
       context.drawImage(input, -input.width / 2, -input.height / 2);
       context.restore(); // restore the context to its original state
     } else {
+      // Draw input at its natural size (no scaling)
+      // If input is downsampled canvas, it will be smaller than internal canvas
+      // This is intentional - we process at lower resolution for performance
       this.context.drawImage(input, 0, 0, input.width, input.height);
     }
 

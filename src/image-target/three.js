@@ -54,17 +54,61 @@ export class MindARThree {
 
   stop() {
     this.controller.stopProcessVideo();
+    
+    // Stop canvas update loop if running
+    if (this.canvasUpdateLoopId !== null && this.canvasUpdateLoopId !== undefined) {
+      cancelAnimationFrame(this.canvasUpdateLoopId);
+      this.canvasUpdateLoopId = null;
+    }
+    
     const tracks = this.video.srcObject.getTracks();
     tracks.forEach(function (track) {
       track.stop();
     });
     this.video.remove();
+    
+    // Clean up tracking canvas
+    if (this.trackingCanvas) {
+      this.trackingCanvas = null;
+      this.trackingCanvasContext = null;
+      this.updateTrackingCanvas = null;
+    }
   }
 
   switchCamera() {
     this.shouldFaceUser = !this.shouldFaceUser;
     this.stop();
     this.start();
+  }
+
+  switchTarget(targetIndex) {
+    // Switch tracking focus to a specific target index
+    // targetIndex: -1 to check all targets, or 0-N to focus on specific target
+    if (this.controller) {
+      this.controller.interestedTargetIndex = targetIndex;
+    }
+  }
+
+  processVideoWithCanvas() {
+    // Start a loop to continuously update the canvas from high-res video
+    // This runs in parallel with the controller's processing loop
+    // The canvas is updated frequently so it's always fresh when the controller reads it
+    const updateLoop = () => {
+      if (this.controller && this.controller.processingVideo) {
+        this.updateTrackingCanvas();
+        requestAnimationFrame(updateLoop);
+      } else {
+        // Stop updating if controller stopped processing
+        this.canvasUpdateLoopId = null;
+      }
+    };
+    
+    // Store the loop ID so we can stop it if needed
+    this.canvasUpdateLoopId = requestAnimationFrame(updateLoop);
+    
+    // Start processing the canvas (controller will read from it in its own loop)
+    // The canvas update loop ensures it's always up-to-date
+    this.controller.processVideo(this.trackingCanvas);
   }
 
   addAnchor(targetIndex) {
@@ -108,7 +152,11 @@ export class MindARThree {
 
       const constraints = {
         audio: false,
-        video: {}
+        video: {
+          // Request high resolution for visual quality in Three.js rendering
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 }
+        }
       };
       if (this.shouldFaceUser) {
         if (this.userDeviceId) {
@@ -143,9 +191,48 @@ export class MindARThree {
       const video = this.video;
       const container = this.container;
 
+      // Create downsampled canvas for Mind-AR processing (lower resolution = better performance)
+      // Target resolution for tracking: 640x480 or 1280x720 depending on device capabilities
+      // Note: Controller still uses full video dimensions for correct projection matrix
+      const trackingWidth = Math.min(1280, Math.floor(video.videoWidth / 2));
+      const trackingHeight = Math.min(720, Math.floor(video.videoHeight / 2));
+      
+      // Ensure minimum resolution for tracking quality
+      const minTrackingWidth = 640;
+      const minTrackingHeight = 480;
+      this.trackingWidth = Math.max(trackingWidth, minTrackingWidth);
+      this.trackingHeight = Math.max(trackingHeight, minTrackingHeight);
+      
+      this.trackingCanvas = document.createElement('canvas');
+      this.trackingCanvas.width = this.trackingWidth;
+      this.trackingCanvas.height = this.trackingHeight;
+      this.trackingCanvasContext = this.trackingCanvas.getContext('2d');
+      
+      // Set up canvas update function that will be called each frame
+      // This downsamples the high-res video to the tracking resolution
+      this.updateTrackingCanvas = () => {
+        if (this.trackingCanvasContext && video.readyState >= 2 && video.videoWidth > 0) {
+          this.trackingCanvasContext.drawImage(
+            video,
+            0, 0, video.videoWidth, video.videoHeight,  // Source: full resolution video
+            0, 0, this.trackingWidth, this.trackingHeight  // Destination: downsampled canvas
+          );
+        }
+      };
+      
+      console.log(`[MindAR] Video resolution: ${video.videoWidth}x${video.videoHeight}, Tracking resolution: ${this.trackingWidth}x${this.trackingHeight}`);
+
+      // Store full video dimensions for projection matrix scaling
+      this.fullVideoWidth = video.videoWidth;
+      this.fullVideoHeight = video.videoHeight;
+      this.downsampleScaleX = this.fullVideoWidth / this.trackingWidth;
+      this.downsampleScaleY = this.fullVideoHeight / this.trackingHeight;
+
+      // Controller uses downsampled dimensions for performance
+      // We'll scale the projection matrix results to match full resolution
       this.controller = new Controller({
-        inputWidth: video.videoWidth,
-        inputHeight: video.videoHeight,
+        inputWidth: this.trackingWidth,  // Downsampled for performance
+        inputHeight: this.trackingHeight,  // Downsampled for performance
         filterMinCF: this.filterMinCF,
         filterBeta: this.filterBeta,
         warmupTolerance: this.warmupTolerance,
@@ -168,6 +255,29 @@ export class MindARThree {
                 if (worldMatrix !== null) {
                   let m = new Matrix4();
                   m.elements = [...worldMatrix];
+                  
+                  // Apply resolution correction: scale the world matrix to account for downsampling
+                  // The world matrix is calculated from a projection matrix based on downsampled resolution,
+                  // but Three.js expects coordinates based on full video resolution.
+                  //
+                  // The projection matrix uses:
+                  //   - Focal length: f = (inputHeight/2) / tan(fovy/2) - proportional to inputHeight
+                  //   - Principal point: (inputWidth/2, inputHeight/2) - proportional to input dimensions
+                  //
+                  // When tracking at lower resolution, the focal length is smaller, which means
+                  // the same 3D position results in different estimated translations.
+                  // The translation components need to be scaled UP by the ratio of full/tracking resolution
+                  // to correct for the downsampled projection matrix.
+                  const scaleX = this.downsampleScaleX;  // > 1, scales up
+                  const scaleY = this.downsampleScaleY;  // > 1, scales up
+                  const scaleZ = (scaleX + scaleY) / 2;  // Average for depth
+                  
+                  // World matrix is column-major: translation is in elements [12, 13, 14]
+                  // Scale translation components UP to correct for downsampled projection matrix
+                  m.elements[12] *= scaleX / 2; // X translation
+                  m.elements[13] *= scaleY / 2; // Y translation
+                  m.elements[14] *= scaleZ; // Z translation (depth)
+                  
                   m.multiply(this.postMatrixs[targetIndex]);
                   if (this.anchors[i].css) {
                     m.multiply(cssScaleDownMatrix);
@@ -229,11 +339,15 @@ export class MindARThree {
         this.postMatrixs.push(postMatrix);
       }
 
-      await this.controller.dummyRun(this.video);
+      // Update canvas before dummy run
+      this.updateTrackingCanvas();
+      await this.controller.dummyRun(this.trackingCanvas);
       this.ui.hideLoading();
       this.ui.showScanning();
 
-      this.controller.processVideo(this.video);
+      // Process the downsampled canvas instead of the full resolution video
+      // We'll update the canvas each frame before processing
+      this.processVideoWithCanvas();
       resolve();
     });
   }
