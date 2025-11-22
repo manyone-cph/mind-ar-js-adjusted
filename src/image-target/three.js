@@ -14,7 +14,8 @@ export class MindARThree {
   constructor({
     container, imageTargetSrc, maxTrack, uiLoading = "yes", uiScanning = "yes", uiError = "yes",
     filterMinCF = null, filterBeta = null, warmupTolerance = null, missTolerance = null,
-    userDeviceId = null, environmentDeviceId = null
+    userDeviceId = null, environmentDeviceId = null,
+    trackingWidth = null, trackingHeight = null, videoWidth = null, videoHeight = null
   }) {
     this.container = container;
     this.imageTargetSrc = imageTargetSrc;
@@ -26,6 +27,10 @@ export class MindARThree {
     this.ui = new UI({ uiLoading, uiScanning, uiError });
     this.userDeviceId = userDeviceId;
     this.environmentDeviceId = environmentDeviceId;
+    this.trackingWidth = trackingWidth;
+    this.trackingHeight = trackingHeight;
+    this.videoWidth = videoWidth;
+    this.videoHeight = videoHeight;
 
     this.shouldFaceUser = false;
 
@@ -53,7 +58,9 @@ export class MindARThree {
   }
 
   stop() {
-    this.controller.stopProcessVideo();
+    if (this.controller) {
+      this.controller.stopProcessVideo();
+    }
     
     // Stop canvas update loop if running
     if (this.canvasUpdateLoopId !== null && this.canvasUpdateLoopId !== undefined) {
@@ -61,11 +68,16 @@ export class MindARThree {
       this.canvasUpdateLoopId = null;
     }
     
-    const tracks = this.video.srcObject.getTracks();
-    tracks.forEach(function (track) {
-      track.stop();
-    });
-    this.video.remove();
+    if (this.video && this.video.srcObject) {
+      const tracks = this.video.srcObject.getTracks();
+      tracks.forEach(function (track) {
+        track.stop();
+      });
+    }
+    
+    if (this.video) {
+      this.video.remove();
+    }
     
     // Clean up tracking canvas
     if (this.trackingCanvas) {
@@ -73,6 +85,41 @@ export class MindARThree {
       this.trackingCanvasContext = null;
       this.updateTrackingCanvas = null;
     }
+    
+    // Clean up controller reference
+    this.controller = null;
+  }
+
+  /**
+   * Restart the AR session with optional new resolution settings
+   * @param {Object} options - Optional resolution settings
+   * @param {number} options.trackingWidth - New tracking width
+   * @param {number} options.trackingHeight - New tracking height
+   * @param {number} options.videoWidth - New video width
+   * @param {number} options.videoHeight - New video height
+   */
+  async restart(options = {}) {
+    console.log("[MindAR] Restarting AR session", options);
+    
+    // Stop current session
+    this.stop();
+    
+    // Update resolution settings if provided
+    if (options.trackingWidth !== undefined) {
+      this.trackingWidth = options.trackingWidth;
+    }
+    if (options.trackingHeight !== undefined) {
+      this.trackingHeight = options.trackingHeight;
+    }
+    if (options.videoWidth !== undefined) {
+      this.videoWidth = options.videoWidth;
+    }
+    if (options.videoHeight !== undefined) {
+      this.videoHeight = options.videoHeight;
+    }
+    
+    // Restart AR session
+    await this.start();
   }
 
   switchCamera() {
@@ -159,15 +206,22 @@ export class MindARThree {
 
       const constraints = {
         audio: false,
-        video: {
-          // Don't restrict resolution - let device choose best available
-          // We'll use high-res for rendering and downsample for tracking
-          // This ensures mobile devices can initialize properly
-          // Mobile-friendly constraints
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        }
+        video: {}
       };
+      
+      // Use configured video dimensions if provided, otherwise use defaults
+      if (this.videoWidth !== null) {
+        constraints.video.width = { ideal: this.videoWidth };
+      }
+      if (this.videoHeight !== null) {
+        constraints.video.height = { ideal: this.videoHeight };
+      }
+      
+      // If no video dimensions specified, use mobile-friendly defaults
+      if (this.videoWidth === null && this.videoHeight === null) {
+        constraints.video.width = { ideal: 1280 };
+        constraints.video.height = { ideal: 720 };
+      }
       if (this.shouldFaceUser) {
         if (this.userDeviceId) {
           constraints.video.deviceId = { exact: this.userDeviceId };
@@ -276,28 +330,42 @@ export class MindARThree {
         });
       }
 
-      // Create downsampled canvas for Mind-AR processing
-      // Use fixed optimal resolution for tracking (640x480 works best for Mind-AR)
-      // This ensures consistent tracking performance across all devices
-      // The high-resolution video is still used for Three.js scene rendering
-      this.trackingWidth = 640;
-      this.trackingHeight = 480;
+      // Use configured tracking dimensions if provided
+      // If null, use video resolution directly (no downsampling)
+      // This gives users full control over tracking quality vs performance
+      if (this.trackingWidth === null || this.trackingHeight === null) {
+        // No downsampling - use video resolution directly for best quality
+        this.trackingWidth = video.videoWidth;
+        this.trackingHeight = video.videoHeight;
+      }
+      // If trackingWidth/trackingHeight are set, they're already stored from constructor
       
-      // Try to create canvas for downsampling, but fallback to video if it fails
-      let useCanvas = true;
-      this.trackingCanvas = document.createElement('canvas');
-      this.trackingCanvas.width = this.trackingWidth;
-      this.trackingCanvas.height = this.trackingHeight;
+      // Only use canvas if tracking dimensions differ from video dimensions (downsampling needed)
+      // If tracking dimensions match video dimensions, use video directly for best quality
+      const needsDownsampling = this.trackingWidth !== video.videoWidth || this.trackingHeight !== video.videoHeight;
+      let useCanvas = false;
       
-      try {
-        this.trackingCanvasContext = this.trackingCanvas.getContext('2d', { willReadFrequently: true });
-        if (!this.trackingCanvasContext) {
-          console.warn('[MindAR] Canvas 2d context not available, falling back to video');
+      if (needsDownsampling) {
+        // Try to create canvas for downsampling, but fallback to video if it fails
+        useCanvas = true;
+        this.trackingCanvas = document.createElement('canvas');
+        this.trackingCanvas.width = this.trackingWidth;
+        this.trackingCanvas.height = this.trackingHeight;
+        
+        try {
+          this.trackingCanvasContext = this.trackingCanvas.getContext('2d', { willReadFrequently: true });
+          if (!this.trackingCanvasContext) {
+            console.warn('[MindAR] Canvas 2d context not available, falling back to video');
+            useCanvas = false;
+          }
+        } catch (e) {
+          console.warn('[MindAR] Failed to create canvas context, falling back to video:', e);
           useCanvas = false;
         }
-      } catch (e) {
-        console.warn('[MindAR] Failed to create canvas context, falling back to video:', e);
-        useCanvas = false;
+      } else {
+        // No downsampling needed - use video directly
+        this.trackingCanvas = null;
+        this.trackingCanvasContext = null;
       }
       
       // Set up canvas update function that will be called each frame
@@ -332,8 +400,14 @@ export class MindARThree {
         // No downsampling - use video directly
         this.downsampleScaleX = 1.0;
         this.downsampleScaleY = 1.0;
-        this.trackingWidth = this.fullVideoWidth;
-        this.trackingHeight = this.fullVideoHeight;
+        // If we tried to use canvas but it failed, we must use video dimensions
+        // Otherwise, tracking dimensions should already match video (or were configured to match)
+        if (needsDownsampling) {
+          // Canvas was needed but failed - must use video dimensions
+          this.trackingWidth = this.fullVideoWidth;
+          this.trackingHeight = this.fullVideoHeight;
+        }
+        // If needsDownsampling is false, trackingWidth/trackingHeight already match video
       }
 
       // Controller uses downsampled dimensions for performance (or native if canvas unavailable)
