@@ -15,8 +15,16 @@ const match = ({keyframe, querypoints, querywidth, queryheight, debugMode}) => {
   let debugExtra = {};
 
   const matches = [];
-  for (let j = 0; j < querypoints.length; j++) {
-    const querypoint = querypoints[j];
+  
+  // Optimization: Limit the number of querypoints processed if there are too many
+  // This prevents excessive computation when detection finds many features
+  const MAX_QUERYPOINTS_FIRST_PASS = 300;
+  const querypointsToProcess = querypoints.length > MAX_QUERYPOINTS_FIRST_PASS 
+    ? querypoints.slice(0, MAX_QUERYPOINTS_FIRST_PASS)
+    : querypoints;
+  
+  for (let j = 0; j < querypointsToProcess.length; j++) {
+    const querypoint = querypointsToProcess[j];
     const keypoints = querypoint.maxima? keyframe.maximaPoints: keyframe.minimaPoints;
     if (keypoints.length === 0) continue;
 
@@ -31,6 +39,9 @@ const match = ({keyframe, querypoints, querywidth, queryheight, debugMode}) => {
     let bestIndex = -1;
     let bestD1 = Number.MAX_SAFE_INTEGER;
     let bestD2 = Number.MAX_SAFE_INTEGER;
+    
+    // Early exit optimization: if we find a very good match, we can stop early
+    const EARLY_EXIT_THRESHOLD = 5;
 
     for (let k = 0; k < keypointIndexes.length; k++) {
       const keypoint = keypoints[keypointIndexes[k]];
@@ -40,6 +51,11 @@ const match = ({keyframe, querypoints, querywidth, queryheight, debugMode}) => {
 	bestD2 = bestD1;
 	bestD1 = d;
 	bestIndex = keypointIndexes[k];
+	
+	// Early exit: if we found a very good match and have a second best, stop searching
+	if (bestD1 < EARLY_EXIT_THRESHOLD && bestD2 !== Number.MAX_SAFE_INTEGER) {
+	  break;
+	}
       } else if (d < bestD2) {
 	bestD2 = d;
       }
@@ -91,22 +107,42 @@ const match = ({keyframe, querypoints, querywidth, queryheight, debugMode}) => {
   const HInv = matrixInverse33(H, 0.00001);
   const dThreshold2 = 10 * 10;
   const matches2 = [];
-  for (let j = 0; j < querypoints.length; j++) {
-    const querypoint = querypoints[j];
-    const mapquerypoint = multiplyPointHomographyInhomogenous([querypoint.x, querypoint.y], HInv);
+  
+  // Optimization: Limit the number of querypoints processed in second pass to avoid excessive computation
+  // Process at most 200 querypoints (or all if fewer) to keep matching time reasonable
+  const MAX_QUERYPOINTS_SECOND_PASS = 200;
+  const querypointsSecondPass = querypoints.length > MAX_QUERYPOINTS_SECOND_PASS 
+    ? querypoints.slice(0, MAX_QUERYPOINTS_SECOND_PASS)
+    : querypoints;
+  
+  // Pre-compute mapped querypoints to avoid repeated homography multiplication
+  const mappedQuerypoints = [];
+  for (let j = 0; j < querypointsSecondPass.length; j++) {
+    mappedQuerypoints[j] = multiplyPointHomographyInhomogenous([querypointsSecondPass[j].x, querypointsSecondPass[j].y], HInv);
+  }
+  
+  for (let j = 0; j < querypointsSecondPass.length; j++) {
+    const querypoint = querypointsSecondPass[j];
+    const mapquerypoint = mappedQuerypoints[j];
 
     let bestIndex = -1;
     let bestD1 = Number.MAX_SAFE_INTEGER;
     let bestD2 = Number.MAX_SAFE_INTEGER;
 
     const keypoints = querypoint.maxima? keyframe.maximaPoints: keyframe.minimaPoints;
+    
+    // Early exit optimization: if we find a very good match (d < 5), we can stop early
+    // This is based on the observation that good matches typically have low Hamming distance
+    const EARLY_EXIT_THRESHOLD = 5;
+    let foundEarlyMatch = false;
 
     for (let k = 0; k < keypoints.length; k++) {
       const keypoint = keypoints[k];
 
-      // check distance threshold
-      const d2 = (keypoint.x - mapquerypoint[0]) * (keypoint.x - mapquerypoint[0])
-		+ (keypoint.y - mapquerypoint[1]) * (keypoint.y - mapquerypoint[1]);
+      // check distance threshold (spatial distance check - fast, do this first)
+      const dx = keypoint.x - mapquerypoint[0];
+      const dy = keypoint.y - mapquerypoint[1];
+      const d2 = dx * dx + dy * dy;
       if (d2 > dThreshold2) continue;
 
       const d = hammingCompute({v1: keypoint.descriptors, v2: querypoint.descriptors});
@@ -114,6 +150,12 @@ const match = ({keyframe, querypoints, querywidth, queryheight, debugMode}) => {
 	bestD2 = bestD1;
 	bestD1 = d;
 	bestIndex = k;
+	
+	// Early exit: if we found a very good match, stop searching
+	if (bestD1 < EARLY_EXIT_THRESHOLD && bestD2 !== Number.MAX_SAFE_INTEGER) {
+	  foundEarlyMatch = true;
+	  break;
+	}
       } else if (d < bestD2) {
 	bestD2 = d;
       }

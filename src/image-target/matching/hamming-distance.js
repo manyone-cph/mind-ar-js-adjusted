@@ -6,6 +6,8 @@ const compute = (options) => {
 
   for (let i = 0; i < v1.length; i++) {
     let x = (v1[i] ^ v2[i]) >>> 0;
+    // Early exit: if XOR is 0, the values are identical, skip bit counting
+    if (x === 0) continue;
     d += bitCount(x);
   }
   return d;

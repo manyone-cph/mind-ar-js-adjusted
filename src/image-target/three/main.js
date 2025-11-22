@@ -175,6 +175,23 @@ export class MindARThree {
     return false;
   }
 
+  enablePerformanceProfiling(enabled = true) {
+    // Enable/disable performance profiling (logs timing breakdowns to console)
+    if (this.arSession && this.arSession.getController()) {
+      this.arSession.getController().debugMode = enabled;
+    }
+    // Also enable in detector if available
+    if (this.arSession && this.arSession.getController()) {
+      const controller = this.arSession.getController();
+      if (controller.cropDetector && controller.cropDetector.detector) {
+        controller.cropDetector.detector.debugMode = enabled;
+      }
+      if (controller.tracker) {
+        controller.tracker.debugMode = enabled;
+      }
+    }
+  }
+
   setFilterParams({filterMinCF, filterBeta, filterDCutOff}) {
     // Update stored values
     if (filterMinCF !== undefined) {

@@ -55,6 +55,7 @@ class Tracker {
 
   track(inputImageT, lastModelViewTransform, targetIndex) {
     let debugExtra = {};
+    const trackStartTime = performance.now();
 
     const modelViewProjectionTransform = buildModelViewProjectionTransform(this.projectionTransform, lastModelViewTransform);
     
@@ -63,6 +64,11 @@ class Tracker {
     let projectedImageTClone;
     let matchingPointsT, simT;
     
+    let projectionTime = 0;
+    let matchingTime = 0;
+    let arraySyncTime = 0;
+    
+    const projectionStart = performance.now();
     tf.tidy(() => {
       const modelViewProjectionTransformT = this._buildAdjustedModelViewTransform(modelViewProjectionTransform);
 
@@ -81,7 +87,9 @@ class Tracker {
       // Use tf.keep() to prevent disposal by tidy()
       projectedImageTClone = tf.keep(projectedImageTTemp.clone());
     });
+    projectionTime = performance.now() - projectionStart;
     
+    const matchingStart = performance.now();
     // Now call _computeMatching with the cloned tensor (it uses its own tf.tidy())
     const matchingResult = this._computeMatching(
       this.featurePointsListT[targetIndex],
@@ -91,13 +99,16 @@ class Tracker {
     );
     matchingPointsT = matchingResult.matchingPointsT;
     simT = matchingResult.simT;
+    matchingTime = performance.now() - matchingStart;
 
     // Cleanup cloned tensor
     projectedImageTClone.dispose();
 
+    const arraySyncStart = performance.now();
     // Batch arraySync() operations - do both at once to reduce GPU-CPU sync overhead
     const matchingPoints = matchingPointsT.arraySync();
     const sim = simT.arraySync();
+    arraySyncTime = performance.now() - arraySyncStart;
 
     const trackingFrame = this.trackingKeyframeList[targetIndex];
     const worldCoords = [];
@@ -116,6 +127,20 @@ class Tracker {
     // Cleanup tensors (these are kept alive by _computeMatching's tidy, but we dispose them here)
     matchingPointsT.dispose();
     simT.dispose();
+
+    const totalTrackTime = performance.now() - trackStartTime;
+    
+    // Performance profiling - log tracking breakdown
+    if (this.debugMode) {
+      const breakdown = {
+        total: totalTrackTime.toFixed(2),
+        projection: projectionTime.toFixed(2),
+        matching: matchingTime.toFixed(2),
+        arraySync: arraySyncTime.toFixed(2),
+        other: (totalTrackTime - projectionTime - matchingTime - arraySyncTime).toFixed(2)
+      };
+      console.log('Tracking breakdown:', breakdown, 'ms');
+    }
 
     if (this.debugMode) {
       debugExtra = {

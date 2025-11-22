@@ -71,13 +71,22 @@ class Detector {
 	 */
 	detect(inputImageT) {
 		let debugExtra = null;
+		const detectStartTime = performance.now();
 
 		// Wrap tensor operations in tf.tidy() for automatic cleanup
 		// Note: We need to keep final tensors alive, so we clone them outside tidy()
 		let prunedExtremasT, extremaAnglesT, freakDescriptorsT;
 		let prunedExtremasList;
+		
+		let pyramidTime = 0;
+		let dogTime = 0;
+		let extremasTime = 0;
+		let localizationTime = 0;
+		let orientationTime = 0;
+		let freakTime = 0;
 
 		tf.tidy(() => {
+			const pyramidStart = performance.now();
 			// Build gaussian pyramid images, two images per octave
 			/** @type {Array<Array<tf.Tensor<tf.Rank>>} */
 			const pyramidImagesT = [];
@@ -95,6 +104,9 @@ class Detector {
 				image2T = this._applyFilter(image1T);
 				pyramidImagesT.push([image1T, image2T]);
 			}
+			pyramidTime = performance.now() - pyramidStart;
+			
+			const dogStart = performance.now();
 			//console.log("Detector::Building dog images...");
 			// Build difference-of-gaussian (dog) pyramid
 			/** @type {tf.Tensor<tf.Rank>[]} */
@@ -103,7 +115,9 @@ class Detector {
 				let dogImageT = this._differenceImageBinomial(pyramidImagesT[i][0], pyramidImagesT[i][1]);
 				dogPyramidImagesT.push(dogImageT);
 			}
+			dogTime = performance.now() - dogStart;
 
+			const extremasStart = performance.now();
 			// find local maximum/minimum
 			/** @type {tf.Tensor<tf.Rank>[]} */
 			const extremasResultsT = [];
@@ -111,25 +125,32 @@ class Detector {
 				const extremasResultT = this._buildExtremas(dogPyramidImagesT[i - 1], dogPyramidImagesT[i], dogPyramidImagesT[i + 1]);
 				extremasResultsT.push(extremasResultT);
 			}
+			extremasTime = performance.now() - extremasStart;
 
 			// divide the input into N by N buckets, and for each bucket,
 			// collect the top 5 most significant extrema across extremas in all scale level
 			// result would be NUM_BUCKETS x NUM_FEATURES_PER_BUCKET extremas
 			prunedExtremasList = this._applyPrune(extremasResultsT);
 
+			const localizationStart = performance.now();
 			const prunedExtremasTTemp = this._computeLocalization(prunedExtremasList, dogPyramidImagesT);
+			localizationTime = performance.now() - localizationStart;
 
+			const orientationStart = performance.now();
 			// compute the orientation angle for each pruned extremas
 			const extremaHistogramsT = this._computeOrientationHistograms(prunedExtremasTTemp, pyramidImagesT);
 
 			const smoothedHistogramsT = this._smoothHistograms(extremaHistogramsT);
 			const extremaAnglesTTemp = this._computeExtremaAngles(smoothedHistogramsT);
+			orientationTime = performance.now() - orientationStart;
 
+			const freakStart = performance.now();
 			// to compute freak descriptors, we first find the pixel value of 37 freak points for each extrema 
 			const extremaFreaksT = this._computeExtremaFreak(pyramidImagesT, prunedExtremasTTemp, extremaAnglesTTemp);
 
 			// compute the binary descriptors
 			const freakDescriptorsTTemp = this._computeFreakDescriptors(extremaFreaksT);
+			freakTime = performance.now() - freakStart;
 
 			// Clone tensors to keep them alive outside tidy()
 			// Use tf.keep() to prevent disposal by tidy()
@@ -147,6 +168,26 @@ class Detector {
 		prunedExtremasT.dispose();
 		extremaAnglesT.dispose();
 		freakDescriptorsT.dispose();
+
+		const totalDetectTime = performance.now() - detectStartTime;
+		
+		// Performance profiling - log detailed breakdown
+		if (this.debugMode || totalDetectTime > 50) {
+			const breakdown = {
+				total: totalDetectTime.toFixed(2),
+				pyramid: pyramidTime.toFixed(2),
+				dog: dogTime.toFixed(2),
+				extremas: extremasTime.toFixed(2),
+				localization: localizationTime.toFixed(2),
+				orientation: orientationTime.toFixed(2),
+				freak: freakTime.toFixed(2),
+				arraySync: (totalDetectTime - pyramidTime - dogTime - extremasTime - localizationTime - orientationTime - freakTime).toFixed(2)
+			};
+			
+			if (this.debugMode) {
+				console.log('Detection breakdown:', breakdown, 'ms');
+			}
+		}
 
 		if (this.debugMode) {
 			// Debug mode - need to sync debug tensors (these are already disposed by tidy, so we skip)

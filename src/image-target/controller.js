@@ -156,8 +156,18 @@ class Controller {
   }
 
   async _detectAndMatch(inputT, targetIndexes) {
+    const detectStart = performance.now();
     const {featurePoints} = this.cropDetector.detectMoving(inputT);
+    const detectTime = performance.now() - detectStart;
+    
+    const matchStart = performance.now();
     const {targetIndex: matchedTargetIndex, modelViewTransform} = await this._workerMatch(featurePoints, targetIndexes);
+    const matchTime = performance.now() - matchStart;
+    
+    if (this.debugMode) {
+      console.log(`Detection: ${detectTime.toFixed(2)}ms, Matching: ${matchTime.toFixed(2)}ms`);
+    }
+    
     return {targetIndex: matchedTargetIndex, modelViewTransform}
   }
   async _trackAndUpdate(inputT, lastModelViewTransform, targetIndex) {
@@ -195,6 +205,8 @@ class Controller {
         return;
       }
 
+      const frameStartTime = performance.now();
+
       // Frame rate limiting: skip frame if not enough time has passed
       if (this.targetFPS && this.frameInterval > 0) {
         const now = performance.now();
@@ -208,13 +220,17 @@ class Controller {
         this.lastFrameTime = now;
       }
 
+      const inputLoadStart = performance.now();
       const inputT = this.inputLoader.loadInput(input);
+      const inputLoadTime = performance.now() - inputLoadStart;
 
       const nTracking = this.trackingStates.reduce((acc, s) => {
 	return acc + (!!s.isTracking? 1: 0);
       }, 0);
 
       // detect and match only if less then maxTrack
+      let detectionTime = 0;
+      let matchingTime = 0;
       if (nTracking < this.maxTrack) {
 
 	const matchingIndexes = [];
@@ -226,7 +242,10 @@ class Controller {
 	  matchingIndexes.push(i);
 	}
 
+	const detectStart = performance.now();
 	const {targetIndex: matchedTargetIndex, modelViewTransform} = await this._detectAndMatch(inputT, matchingIndexes);
+	detectionTime = performance.now() - detectStart;
+	matchingTime = detectionTime; // Matching is part of _detectAndMatch
 
 	if (matchedTargetIndex !== -1) {
 	  this.trackingStates[matchedTargetIndex].isTracking = true;
@@ -235,11 +254,14 @@ class Controller {
       }
 
       // tracking update
+      let trackingTime = 0;
       for (let i = 0; i < this.trackingStates.length; i++) {
 	const trackingState = this.trackingStates[i];
 
 	if (trackingState.isTracking) {
+	  const trackStart = performance.now();
 	  let modelViewTransform = await this._trackAndUpdate(inputT, trackingState.currentModelViewTransform, i);
+	  trackingTime += performance.now() - trackStart;
 	  if (modelViewTransform === null) {
 	    trackingState.isTracking = false;
 	  } else {
@@ -296,6 +318,21 @@ class Controller {
       }
 
       inputT.dispose();
+      
+      const totalFrameTime = performance.now() - frameStartTime;
+      
+      // Performance profiling - log slow frames
+      if (this.debugMode) {
+        const breakdown = {
+          total: totalFrameTime.toFixed(2),
+          inputLoad: inputLoadTime.toFixed(2),
+          detection: detectionTime.toFixed(2),
+          tracking: trackingTime.toFixed(2),
+          other: (totalFrameTime - inputLoadTime - detectionTime - trackingTime).toFixed(2)
+        };
+        console.log('Frame timing:', breakdown);
+      }
+      
       this.onUpdate && this.onUpdate({type: 'processDone'});
     };
 
