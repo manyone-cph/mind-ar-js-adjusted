@@ -93,6 +93,13 @@ export class MindARThree {
     // Start a loop to continuously update the canvas from high-res video
     // This runs in parallel with the controller's processing loop
     // The canvas is updated frequently so it's always fresh when the controller reads it
+    if (!this.trackingCanvas || !this.trackingCanvasContext) {
+      // Fallback to video if canvas is not available
+      console.warn('[MindAR] Canvas not available, using video directly');
+      this.controller.processVideo(this.video);
+      return;
+    }
+    
     const updateLoop = () => {
       if (this.controller && this.controller.processingVideo) {
         this.updateTrackingCanvas();
@@ -156,6 +163,9 @@ export class MindARThree {
           // Don't restrict resolution - let device choose best available
           // We'll use high-res for rendering and downsample for tracking
           // This ensures mobile devices can initialize properly
+          // Mobile-friendly constraints
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         }
       };
       if (this.shouldFaceUser) {
@@ -173,18 +183,73 @@ export class MindARThree {
       }
 
       navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
-        this.video.addEventListener('loadedmetadata', () => {
-          this.video.setAttribute('width', this.video.videoWidth);
-          this.video.setAttribute('height', this.video.videoHeight);
-          console.log(`[MindAR] Video initialized: ${this.video.videoWidth}x${this.video.videoHeight}`);
-          resolve();
-        });
         this.video.srcObject = stream;
+        // Use 'loadedmetadata' event for better mobile compatibility
+        // Also handle 'loadeddata' as fallback for some mobile browsers
+        const onVideoReady = () => {
+          if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+            this.video.setAttribute('width', this.video.videoWidth);
+            this.video.setAttribute('height', this.video.videoHeight);
+            console.log(`[MindAR] Video initialized: ${this.video.videoWidth}x${this.video.videoHeight}`);
+            this.video.removeEventListener('loadedmetadata', onVideoReady);
+            this.video.removeEventListener('loadeddata', onVideoReady);
+            resolve();
+          }
+        };
+        
+        this.video.addEventListener('loadedmetadata', onVideoReady);
+        this.video.addEventListener('loadeddata', onVideoReady);
+        
+        // Fallback timeout for mobile devices that might not fire events properly
+        setTimeout(() => {
+          if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+            onVideoReady();
+          } else {
+            console.warn('[MindAR] Video metadata timeout, attempting to proceed anyway');
+            // Try to proceed with current video state
+            if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+              onVideoReady();
+            } else {
+              // Last resort: use default dimensions if available
+              const tracks = stream.getVideoTracks();
+              if (tracks.length > 0) {
+                const settings = tracks[0].getSettings();
+                if (settings.width && settings.height) {
+                  this.video.setAttribute('width', settings.width);
+                  this.video.setAttribute('height', settings.height);
+                  console.log(`[MindAR] Video initialized from track settings: ${settings.width}x${settings.height}`);
+                  resolve();
+                } else {
+                  reject(new Error('Video dimensions not available'));
+                }
+              } else {
+                reject(new Error('No video tracks available'));
+              }
+            }
+          }
+        }, 3000);
       }).catch((err) => {
         console.error("[MindAR] getUserMedia error:", err);
         console.error("[MindAR] Error name:", err.name);
         console.error("[MindAR] Error message:", err.message);
-        reject(err);
+        // Try with more permissive constraints as fallback
+        const fallbackConstraints = {
+          audio: false,
+          video: this.shouldFaceUser ? { facingMode: 'user' } : { facingMode: 'environment' }
+        };
+        console.log("[MindAR] Attempting fallback with simpler constraints");
+        navigator.mediaDevices.getUserMedia(fallbackConstraints).then((stream) => {
+          this.video.srcObject = stream;
+          this.video.addEventListener('loadedmetadata', () => {
+            this.video.setAttribute('width', this.video.videoWidth);
+            this.video.setAttribute('height', this.video.videoHeight);
+            console.log(`[MindAR] Video initialized (fallback): ${this.video.videoWidth}x${this.video.videoHeight}`);
+            resolve();
+          });
+        }).catch((fallbackErr) => {
+          console.error("[MindAR] Fallback getUserMedia also failed:", fallbackErr);
+          reject(fallbackErr);
+        });
       });
     });
   }
@@ -194,6 +259,23 @@ export class MindARThree {
       const video = this.video;
       const container = this.container;
 
+      // Wait for video to be ready before proceeding
+      // On mobile, video metadata might not be immediately available
+      if (!video.videoWidth || !video.videoHeight) {
+        // Wait for video dimensions to be available
+        await new Promise((videoResolve) => {
+          const checkVideo = () => {
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+              videoResolve();
+            } else {
+              // Check again after a short delay
+              setTimeout(checkVideo, 100);
+            }
+          };
+          checkVideo();
+        });
+      }
+
       // Create downsampled canvas for Mind-AR processing
       // Use fixed optimal resolution for tracking (640x480 works best for Mind-AR)
       // This ensures consistent tracking performance across all devices
@@ -201,36 +283,64 @@ export class MindARThree {
       this.trackingWidth = 640;
       this.trackingHeight = 480;
       
+      // Try to create canvas for downsampling, but fallback to video if it fails
+      let useCanvas = true;
       this.trackingCanvas = document.createElement('canvas');
       this.trackingCanvas.width = this.trackingWidth;
       this.trackingCanvas.height = this.trackingHeight;
-      this.trackingCanvasContext = this.trackingCanvas.getContext('2d');
+      
+      try {
+        this.trackingCanvasContext = this.trackingCanvas.getContext('2d', { willReadFrequently: true });
+        if (!this.trackingCanvasContext) {
+          console.warn('[MindAR] Canvas 2d context not available, falling back to video');
+          useCanvas = false;
+        }
+      } catch (e) {
+        console.warn('[MindAR] Failed to create canvas context, falling back to video:', e);
+        useCanvas = false;
+      }
       
       // Set up canvas update function that will be called each frame
       // This downsamples the high-res video to the tracking resolution
       this.updateTrackingCanvas = () => {
-        if (this.trackingCanvasContext && video.readyState >= 2 && video.videoWidth > 0) {
-          this.trackingCanvasContext.drawImage(
-            video,
-            0, 0, video.videoWidth, video.videoHeight,  // Source: full resolution video
-            0, 0, this.trackingWidth, this.trackingHeight  // Destination: downsampled canvas
-          );
+        if (useCanvas && this.trackingCanvasContext && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          try {
+            this.trackingCanvasContext.drawImage(
+              video,
+              0, 0, video.videoWidth, video.videoHeight,  // Source: full resolution video
+              0, 0, this.trackingWidth, this.trackingHeight  // Destination: downsampled canvas
+            );
+          } catch (e) {
+            // If canvas drawing fails, disable canvas mode
+            console.warn('[MindAR] Canvas drawImage failed, falling back to video:', e);
+            useCanvas = false;
+          }
         }
       };
       
-      console.log(`[MindAR] Video resolution: ${video.videoWidth}x${video.videoHeight}, Tracking resolution: ${this.trackingWidth}x${this.trackingHeight}`);
+      console.log(`[MindAR] Video resolution: ${video.videoWidth}x${video.videoHeight}, Tracking resolution: ${useCanvas ? `${this.trackingWidth}x${this.trackingHeight} (canvas)` : 'native (video)'}`);
 
       // Store full video dimensions for projection matrix scaling
       this.fullVideoWidth = video.videoWidth;
       this.fullVideoHeight = video.videoHeight;
-      this.downsampleScaleX = this.fullVideoWidth / this.trackingWidth;
-      this.downsampleScaleY = this.fullVideoHeight / this.trackingHeight;
+      
+      // If using canvas, calculate scale factors; otherwise use 1.0 (no scaling needed)
+      if (useCanvas) {
+        this.downsampleScaleX = this.fullVideoWidth / this.trackingWidth;
+        this.downsampleScaleY = this.fullVideoHeight / this.trackingHeight;
+      } else {
+        // No downsampling - use video directly
+        this.downsampleScaleX = 1.0;
+        this.downsampleScaleY = 1.0;
+        this.trackingWidth = this.fullVideoWidth;
+        this.trackingHeight = this.fullVideoHeight;
+      }
 
-      // Controller uses downsampled dimensions for performance
-      // We'll scale the projection matrix results to match full resolution
+      // Controller uses downsampled dimensions for performance (or native if canvas unavailable)
+      // We'll scale the projection matrix results to match full resolution if using canvas
       this.controller = new Controller({
-        inputWidth: this.trackingWidth,  // Downsampled for performance
-        inputHeight: this.trackingHeight,  // Downsampled for performance
+        inputWidth: this.trackingWidth,  // Downsampled for performance, or native video resolution
+        inputHeight: this.trackingHeight,  // Downsampled for performance, or native video resolution
         filterMinCF: this.filterMinCF,
         filterBeta: this.filterBeta,
         warmupTolerance: this.warmupTolerance,
@@ -255,26 +365,29 @@ export class MindARThree {
                   m.elements = [...worldMatrix];
                   
                   // Apply resolution correction: scale the world matrix to account for downsampling
-                  // The world matrix is calculated from a projection matrix based on downsampled resolution,
-                  // but Three.js expects coordinates based on full video resolution.
-                  //
-                  // The projection matrix uses:
-                  //   - Focal length: f = (inputHeight/2) / tan(fovy/2) - proportional to inputHeight
-                  //   - Principal point: (inputWidth/2, inputHeight/2) - proportional to input dimensions
-                  //
-                  // When tracking at lower resolution, the focal length is smaller, which means
-                  // the same 3D position results in different estimated translations.
-                  // The translation components need to be scaled UP by the ratio of full/tracking resolution
-                  // to correct for the downsampled projection matrix.
-                  const scaleX = this.downsampleScaleX;  // > 1, scales up
-                  const scaleY = this.downsampleScaleY;  // > 1, scales up
-                  const scaleZ = (scaleX + scaleY) / 2;  // Average for depth
-                  
-                  // World matrix is column-major: translation is in elements [12, 13, 14]
-                  // Scale translation components UP to correct for downsampled projection matrix
-                  m.elements[12] *= scaleX / 2; // X translation
-                  m.elements[13] *= scaleY / 2; // Y translation
-                  m.elements[14] *= scaleZ; // Z translation (depth)
+                  // Only needed if we're using canvas downsampling (scale factors > 1.0)
+                  if (this.downsampleScaleX > 1.0 || this.downsampleScaleY > 1.0) {
+                    // The world matrix is calculated from a projection matrix based on downsampled resolution,
+                    // but Three.js expects coordinates based on full video resolution.
+                    //
+                    // The projection matrix uses:
+                    //   - Focal length: f = (inputHeight/2) / tan(fovy/2) - proportional to inputHeight
+                    //   - Principal point: (inputWidth/2, inputHeight/2) - proportional to input dimensions
+                    //
+                    // When tracking at lower resolution, the focal length is smaller, which means
+                    // the same 3D position results in different estimated translations.
+                    // The translation components need to be scaled UP by the ratio of full/tracking resolution
+                    // to correct for the downsampled projection matrix.
+                    const scaleX = this.downsampleScaleX;  // > 1, scales up
+                    const scaleY = this.downsampleScaleY;  // > 1, scales up
+                    const scaleZ = (scaleX + scaleY) / 2;  // Average for depth
+                    
+                    // World matrix is column-major: translation is in elements [12, 13, 14]
+                    // Scale translation components UP to correct for downsampled projection matrix
+                    m.elements[12] *= scaleX / 2; // X translation
+                    m.elements[13] *= scaleY / 2; // Y translation
+                    m.elements[14] *= scaleZ; // Z translation (depth)
+                  }
                   
                   m.multiply(this.postMatrixs[targetIndex]);
                   if (this.anchors[i].css) {
@@ -337,15 +450,25 @@ export class MindARThree {
         this.postMatrixs.push(postMatrix);
       }
 
-      // Update canvas before dummy run
-      this.updateTrackingCanvas();
-      await this.controller.dummyRun(this.trackingCanvas);
+      // Update canvas before dummy run (if using canvas)
+      if (useCanvas) {
+        this.updateTrackingCanvas();
+        await this.controller.dummyRun(this.trackingCanvas);
+      } else {
+        // Use video directly if canvas is not available
+        await this.controller.dummyRun(video);
+      }
       this.ui.hideLoading();
       this.ui.showScanning();
 
-      // Process the downsampled canvas instead of the full resolution video
-      // We'll update the canvas each frame before processing
-      this.processVideoWithCanvas();
+      // Process the downsampled canvas or video directly
+      if (useCanvas) {
+        // Process the downsampled canvas - we'll update the canvas each frame before processing
+        this.processVideoWithCanvas();
+      } else {
+        // Fallback: process video directly (original Mind-AR behavior)
+        this.controller.processVideo(video);
+      }
       resolve();
     });
   }
