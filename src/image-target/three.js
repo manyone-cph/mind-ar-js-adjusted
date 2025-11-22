@@ -209,18 +209,12 @@ export class MindARThree {
         video: {}
       };
       
-      // Use configured video dimensions if provided, otherwise use defaults
+      // Use configured video dimensions if provided, otherwise let device choose
       if (this.videoWidth !== null) {
         constraints.video.width = { ideal: this.videoWidth };
       }
       if (this.videoHeight !== null) {
         constraints.video.height = { ideal: this.videoHeight };
-      }
-      
-      // If no video dimensions specified, use mobile-friendly defaults
-      if (this.videoWidth === null && this.videoHeight === null) {
-        constraints.video.width = { ideal: 1280 };
-        constraints.video.height = { ideal: 720 };
       }
       if (this.shouldFaceUser) {
         if (this.userDeviceId) {
@@ -238,72 +232,15 @@ export class MindARThree {
 
       navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
         this.video.srcObject = stream;
-        // Use 'loadedmetadata' event for better mobile compatibility
-        // Also handle 'loadeddata' as fallback for some mobile browsers
-        const onVideoReady = () => {
-          if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-            this.video.setAttribute('width', this.video.videoWidth);
-            this.video.setAttribute('height', this.video.videoHeight);
-            console.log(`[MindAR] Video initialized: ${this.video.videoWidth}x${this.video.videoHeight}`);
-            this.video.removeEventListener('loadedmetadata', onVideoReady);
-            this.video.removeEventListener('loadeddata', onVideoReady);
-            resolve();
-          }
-        };
-        
-        this.video.addEventListener('loadedmetadata', onVideoReady);
-        this.video.addEventListener('loadeddata', onVideoReady);
-        
-        // Fallback timeout for mobile devices that might not fire events properly
-        setTimeout(() => {
-          if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-            onVideoReady();
-          } else {
-            console.warn('[MindAR] Video metadata timeout, attempting to proceed anyway');
-            // Try to proceed with current video state
-            if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-              onVideoReady();
-            } else {
-              // Last resort: use default dimensions if available
-              const tracks = stream.getVideoTracks();
-              if (tracks.length > 0) {
-                const settings = tracks[0].getSettings();
-                if (settings.width && settings.height) {
-                  this.video.setAttribute('width', settings.width);
-                  this.video.setAttribute('height', settings.height);
-                  console.log(`[MindAR] Video initialized from track settings: ${settings.width}x${settings.height}`);
-                  resolve();
-                } else {
-                  reject(new Error('Video dimensions not available'));
-                }
-              } else {
-                reject(new Error('No video tracks available'));
-              }
-            }
-          }
-        }, 3000);
+        this.video.addEventListener('loadedmetadata', () => {
+          this.video.setAttribute('width', this.video.videoWidth);
+          this.video.setAttribute('height', this.video.videoHeight);
+          console.log(`[MindAR] Video initialized: ${this.video.videoWidth}x${this.video.videoHeight}`);
+          resolve();
+        });
       }).catch((err) => {
         console.error("[MindAR] getUserMedia error:", err);
-        console.error("[MindAR] Error name:", err.name);
-        console.error("[MindAR] Error message:", err.message);
-        // Try with more permissive constraints as fallback
-        const fallbackConstraints = {
-          audio: false,
-          video: this.shouldFaceUser ? { facingMode: 'user' } : { facingMode: 'environment' }
-        };
-        console.log("[MindAR] Attempting fallback with simpler constraints");
-        navigator.mediaDevices.getUserMedia(fallbackConstraints).then((stream) => {
-          this.video.srcObject = stream;
-          this.video.addEventListener('loadedmetadata', () => {
-            this.video.setAttribute('width', this.video.videoWidth);
-            this.video.setAttribute('height', this.video.videoHeight);
-            console.log(`[MindAR] Video initialized (fallback): ${this.video.videoWidth}x${this.video.videoHeight}`);
-            resolve();
-          });
-        }).catch((fallbackErr) => {
-          console.error("[MindAR] Fallback getUserMedia also failed:", fallbackErr);
-          reject(fallbackErr);
-        });
+        reject(err);
       });
     });
   }
@@ -343,11 +280,11 @@ export class MindARThree {
       // Only use canvas if tracking dimensions differ from video dimensions (downsampling needed)
       // If tracking dimensions match video dimensions, use video directly for best quality
       const needsDownsampling = this.trackingWidth !== video.videoWidth || this.trackingHeight !== video.videoHeight;
-      let useCanvas = false;
+      this.useCanvas = false;
       
       if (needsDownsampling) {
         // Try to create canvas for downsampling, but fallback to video if it fails
-        useCanvas = true;
+        this.useCanvas = true;
         this.trackingCanvas = document.createElement('canvas');
         this.trackingCanvas.width = this.trackingWidth;
         this.trackingCanvas.height = this.trackingHeight;
@@ -356,11 +293,11 @@ export class MindARThree {
           this.trackingCanvasContext = this.trackingCanvas.getContext('2d', { willReadFrequently: true });
           if (!this.trackingCanvasContext) {
             console.warn('[MindAR] Canvas 2d context not available, falling back to video');
-            useCanvas = false;
+            this.useCanvas = false;
           }
         } catch (e) {
           console.warn('[MindAR] Failed to create canvas context, falling back to video:', e);
-          useCanvas = false;
+          this.useCanvas = false;
         }
       } else {
         // No downsampling needed - use video directly
@@ -371,7 +308,7 @@ export class MindARThree {
       // Set up canvas update function that will be called each frame
       // This downsamples the high-res video to the tracking resolution
       this.updateTrackingCanvas = () => {
-        if (useCanvas && this.trackingCanvasContext && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+        if (this.useCanvas && this.trackingCanvasContext && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
           try {
             this.trackingCanvasContext.drawImage(
               video,
@@ -381,19 +318,19 @@ export class MindARThree {
           } catch (e) {
             // If canvas drawing fails, disable canvas mode
             console.warn('[MindAR] Canvas drawImage failed, falling back to video:', e);
-            useCanvas = false;
+            this.useCanvas = false;
           }
         }
       };
       
-      console.log(`[MindAR] Video resolution: ${video.videoWidth}x${video.videoHeight}, Tracking resolution: ${useCanvas ? `${this.trackingWidth}x${this.trackingHeight} (canvas)` : 'native (video)'}`);
+      console.log(`[MindAR] Video resolution: ${video.videoWidth}x${video.videoHeight}, Tracking resolution: ${this.useCanvas ? `${this.trackingWidth}x${this.trackingHeight} (canvas)` : 'native (video)'}`);
 
       // Store full video dimensions for projection matrix scaling
       this.fullVideoWidth = video.videoWidth;
       this.fullVideoHeight = video.videoHeight;
       
       // If using canvas, calculate scale factors; otherwise use 1.0 (no scaling needed)
-      if (useCanvas) {
+      if (this.useCanvas) {
         this.downsampleScaleX = this.fullVideoWidth / this.trackingWidth;
         this.downsampleScaleY = this.fullVideoHeight / this.trackingHeight;
       } else {
@@ -458,8 +395,8 @@ export class MindARThree {
                     
                     // World matrix is column-major: translation is in elements [12, 13, 14]
                     // Scale translation components UP to correct for downsampled projection matrix
-                    m.elements[12] *= scaleX / 2; // X translation
-                    m.elements[13] *= scaleY / 2; // Y translation
+                    m.elements[12] *= scaleX; // X translation
+                    m.elements[13] *= scaleY; // Y translation
                     m.elements[14] *= scaleZ; // Z translation (depth)
                   }
                   
@@ -525,7 +462,7 @@ export class MindARThree {
       }
 
       // Update canvas before dummy run (if using canvas)
-      if (useCanvas) {
+      if (this.useCanvas) {
         this.updateTrackingCanvas();
         await this.controller.dummyRun(this.trackingCanvas);
       } else {
@@ -536,7 +473,7 @@ export class MindARThree {
       this.ui.showScanning();
 
       // Process the downsampled canvas or video directly
-      if (useCanvas) {
+      if (this.useCanvas) {
         // Process the downsampled canvas - we'll update the canvas each frame before processing
         this.processVideoWithCanvas();
       } else {
