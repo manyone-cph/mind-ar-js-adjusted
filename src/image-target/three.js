@@ -153,9 +153,9 @@ export class MindARThree {
       const constraints = {
         audio: false,
         video: {
-          // Request high resolution for visual quality in Three.js rendering
-          width: { ideal: 1920, min: 1280 },
-          height: { ideal: 1080, min: 720 }
+          // Don't restrict resolution - let device choose best available
+          // We'll use high-res for rendering and downsample for tracking
+          // This ensures mobile devices can initialize properly
         }
       };
       if (this.shouldFaceUser) {
@@ -176,12 +176,15 @@ export class MindARThree {
         this.video.addEventListener('loadedmetadata', () => {
           this.video.setAttribute('width', this.video.videoWidth);
           this.video.setAttribute('height', this.video.videoHeight);
+          console.log(`[MindAR] Video initialized: ${this.video.videoWidth}x${this.video.videoHeight}`);
           resolve();
         });
         this.video.srcObject = stream;
       }).catch((err) => {
-        console.log("getUserMedia error", err);
-        reject();
+        console.error("[MindAR] getUserMedia error:", err);
+        console.error("[MindAR] Error name:", err.name);
+        console.error("[MindAR] Error message:", err.message);
+        reject(err);
       });
     });
   }
@@ -191,17 +194,12 @@ export class MindARThree {
       const video = this.video;
       const container = this.container;
 
-      // Create downsampled canvas for Mind-AR processing (lower resolution = better performance)
-      // Target resolution for tracking: 640x480 or 1280x720 depending on device capabilities
-      // Note: Controller still uses full video dimensions for correct projection matrix
-      const trackingWidth = Math.min(1280, Math.floor(video.videoWidth / 2));
-      const trackingHeight = Math.min(720, Math.floor(video.videoHeight / 2));
-      
-      // Ensure minimum resolution for tracking quality
-      const minTrackingWidth = 640;
-      const minTrackingHeight = 480;
-      this.trackingWidth = Math.max(trackingWidth, minTrackingWidth);
-      this.trackingHeight = Math.max(trackingHeight, minTrackingHeight);
+      // Create downsampled canvas for Mind-AR processing
+      // Use fixed optimal resolution for tracking (640x480 works best for Mind-AR)
+      // This ensures consistent tracking performance across all devices
+      // The high-resolution video is still used for Three.js scene rendering
+      this.trackingWidth = 640;
+      this.trackingHeight = 480;
       
       this.trackingCanvas = document.createElement('canvas');
       this.trackingCanvas.width = this.trackingWidth;
