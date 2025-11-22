@@ -7,14 +7,16 @@ import {OneEuroFilter} from '../libs/one-euro-filter.js';
 
 const DEFAULT_FILTER_CUTOFF = 0.001; // 1Hz. time period in milliseconds
 const DEFAULT_FILTER_BETA = 1;
+const DEFAULT_FILTER_DCUTOFF = 0.001; // 1Hz. derivative cutoff
 
 class Controller {
-  constructor({onUpdate=null, filterMinCF=null, filterBeta=null}) {
+  constructor({onUpdate=null, filterMinCF=null, filterBeta=null, filterDCutOff=null}) {
     this.customFaceGeometries = [];
     this.estimator = null;
     this.lastEstimateResult = null;
     this.filterMinCF = filterMinCF === null? DEFAULT_FILTER_CUTOFF: filterMinCF;
     this.filterBeta = filterBeta === null? DEFAULT_FILTER_BETA: filterBeta;
+    this.filterDCutOff = filterDCutOff === null? DEFAULT_FILTER_DCUTOFF: filterDCutOff;
     this.onUpdate = onUpdate;
     this.flipFace = false;
 
@@ -22,10 +24,10 @@ class Controller {
 
     this.landmarkFilters = [];
     for (let i = 0; i < canonicalMetricLandmarks.length; i++) {
-      this.landmarkFilters[i] = new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta});
+      this.landmarkFilters[i] = new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta, dCutOff: this.filterDCutOff});
     }
-    this.faceMatrixFilter = new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta});
-    this.faceScaleFilter = new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta});
+    this.faceMatrixFilter = new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta, dCutOff: this.filterDCutOff});
+    this.faceScaleFilter = new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta, dCutOff: this.filterDCutOff});
   }
 
   async setup(flipFace) {
@@ -136,6 +138,65 @@ class Controller {
 
   stopProcessVideo() {
     this.processingVideo = false;
+  }
+
+  setFilterParams({filterMinCF, filterBeta, filterDCutOff}) {
+    // Validate parameters
+    if (filterMinCF !== undefined && (typeof filterMinCF !== 'number' || filterMinCF < 0)) {
+      throw new Error('filterMinCF must be a non-negative number');
+    }
+    if (filterBeta !== undefined && (typeof filterBeta !== 'number' || filterBeta < 0)) {
+      throw new Error('filterBeta must be a non-negative number');
+    }
+    if (filterDCutOff !== undefined && (typeof filterDCutOff !== 'number' || filterDCutOff < 0)) {
+      throw new Error('filterDCutOff must be a non-negative number');
+    }
+
+    // Update stored values
+    if (filterMinCF !== undefined) {
+      this.filterMinCF = filterMinCF;
+    }
+    if (filterBeta !== undefined) {
+      this.filterBeta = filterBeta;
+    }
+    if (filterDCutOff !== undefined) {
+      this.filterDCutOff = filterDCutOff;
+    }
+
+    // Update all existing filter instances
+    if (this.landmarkFilters && this.landmarkFilters.length > 0) {
+      for (let i = 0; i < this.landmarkFilters.length; i++) {
+        if (this.landmarkFilters[i]) {
+          this.landmarkFilters[i].updateParams({
+            minCutOff: this.filterMinCF,
+            beta: this.filterBeta,
+            dCutOff: this.filterDCutOff
+          });
+        }
+      }
+    }
+    if (this.faceMatrixFilter) {
+      this.faceMatrixFilter.updateParams({
+        minCutOff: this.filterMinCF,
+        beta: this.filterBeta,
+        dCutOff: this.filterDCutOff
+      });
+    }
+    if (this.faceScaleFilter) {
+      this.faceScaleFilter.updateParams({
+        minCutOff: this.filterMinCF,
+        beta: this.filterBeta,
+        dCutOff: this.filterDCutOff
+      });
+    }
+  }
+
+  getConfig() {
+    return {
+      filterMinCF: this.filterMinCF,
+      filterBeta: this.filterBeta,
+      filterDCutOff: this.filterDCutOff
+    };
   }
 
   createThreeFaceGeometry(THREE) {

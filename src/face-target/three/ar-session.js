@@ -11,6 +11,7 @@ export class ARSession {
     this.controller = new Controller({
       filterMinCF: this.controllerConfig.filterMinCF,
       filterBeta: this.controllerConfig.filterBeta,
+      filterDCutOff: this.controllerConfig.filterDCutOff,
     });
 
     this.controller.onUpdate = this.controllerConfig.onUpdate;

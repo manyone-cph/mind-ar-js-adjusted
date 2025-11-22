@@ -17,6 +17,7 @@ export class MindARThree {
     uiError = "yes",
     filterMinCF = null,
     filterBeta = null,
+    filterDCutOff = null,
     warmupTolerance = null,
     missTolerance = null,
     userDeviceId = null,
@@ -29,6 +30,7 @@ export class MindARThree {
     this.maxTrack = maxTrack;
     this.filterMinCF = filterMinCF;
     this.filterBeta = filterBeta;
+    this.filterDCutOff = filterDCutOff;
     this.warmupTolerance = warmupTolerance;
     this.missTolerance = missTolerance;
     this.userDeviceId = userDeviceId;
@@ -151,6 +153,76 @@ export class MindARThree {
     }
   }
 
+  setFilterParams({filterMinCF, filterBeta, filterDCutOff}) {
+    // Update stored values
+    if (filterMinCF !== undefined) {
+      this.filterMinCF = filterMinCF;
+    }
+    if (filterBeta !== undefined) {
+      this.filterBeta = filterBeta;
+    }
+    if (filterDCutOff !== undefined) {
+      this.filterDCutOff = filterDCutOff;
+    }
+
+    // Update controller if AR session is running
+    if (this.arSession && this.arSession.getController()) {
+      this.arSession.getController().setFilterParams({filterMinCF, filterBeta, filterDCutOff});
+    }
+  }
+
+  setWarmupTolerance(warmupTolerance) {
+    // Update stored value
+    this.warmupTolerance = warmupTolerance;
+
+    // Update controller if AR session is running
+    if (this.arSession && this.arSession.getController()) {
+      this.arSession.getController().setWarmupTolerance(warmupTolerance);
+    }
+  }
+
+  setMissTolerance(missTolerance) {
+    // Update stored value
+    this.missTolerance = missTolerance;
+
+    // Update controller if AR session is running
+    if (this.arSession && this.arSession.getController()) {
+      this.arSession.getController().setMissTolerance(missTolerance);
+    }
+  }
+
+  setMaxTrack(maxTrack) {
+    // Update stored value
+    this.maxTrack = maxTrack;
+
+    // Update controller if AR session is running
+    if (this.arSession && this.arSession.getController()) {
+      this.arSession.getController().setMaxTrack(maxTrack);
+    }
+  }
+
+  getConfig() {
+    const config = {
+      filterMinCF: this.filterMinCF,
+      filterBeta: this.filterBeta,
+      filterDCutOff: this.filterDCutOff,
+      warmupTolerance: this.warmupTolerance,
+      missTolerance: this.missTolerance,
+      maxTrack: this.maxTrack,
+      targetFPS: this.targetFPS
+    };
+
+    // Include controller config if AR session is running
+    if (this.arSession && this.arSession.getController()) {
+      return {
+        ...config,
+        controller: this.arSession.getController().getConfig()
+      };
+    }
+
+    return config;
+  }
+
   async _startAR() {
     const video = this.videoManager.getVideo();
 
@@ -177,6 +249,7 @@ export class MindARThree {
       {
         filterMinCF: this.filterMinCF,
         filterBeta: this.filterBeta,
+        filterDCutOff: this.filterDCutOff,
         warmupTolerance: this.warmupTolerance,
         missTolerance: this.missTolerance,
         maxTrack: this.maxTrack,

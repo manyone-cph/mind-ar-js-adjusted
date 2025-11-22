@@ -20,6 +20,11 @@
 - [Quick Start](#quick-start)
 - [Documentation](#documentation)
 - [API Reference](#api-reference)
+- [Configuration Guide](#configuration-guide)
+  - [Filter Configuration](#filter-configuration)
+  - [Tracking Stability](#tracking-stability)
+  - [Multi-Target Tracking](#multi-target-tracking)
+  - [Performance Tuning](#performance-tuning)
 - [Examples](#examples)
 - [Architecture](#architecture)
 - [Development](#development)
@@ -185,6 +190,7 @@ const mindarThree = new MindARThree({
   uiError: string,                   // Optional: "yes" | "no" (default: "yes")
   filterMinCF: number,               // Optional: Filter cutoff frequency
   filterBeta: number,                // Optional: Filter beta value
+  filterDCutOff: number,              // Optional: Filter derivative cutoff (default: 0.001)
   warmupTolerance: number,            // Optional: Warmup tolerance
   missTolerance: number,              // Optional: Miss tolerance
   userDeviceId: string,              // Optional: Specific user-facing camera ID
@@ -212,6 +218,13 @@ const mindarThree = new MindARThree({
 await mindarThree.setResolution('1080p');  // Switch to 1080p
 // The AR session will automatically restart with the new resolution
 // All anchors and 3D objects are preserved during the restart
+
+// All configuration parameters can be updated at runtime without restarting:
+mindarThree.setFilterParams({ filterMinCF: 0.002, filterBeta: 1200, filterDCutOff: 0.001 });
+mindarThree.setWarmupTolerance(8);
+mindarThree.setMissTolerance(6);
+mindarThree.setMaxTrack(2);
+mindarThree.setTargetFPS(30);
 ```
 
 #### Methods
@@ -220,6 +233,12 @@ await mindarThree.setResolution('1080p');  // Switch to 1080p
 - `stop()`: Stop the AR session
 - `switchCamera()`: Switch between front and back cameras
 - `setResolution(resolution)`: Change camera resolution at runtime (e.g., `"360p"`, `"720p"`, `"1080p"`)
+- `setFilterParams({filterMinCF, filterBeta, filterDCutOff})`: Update filter parameters at runtime (see [Filter Configuration](#filter-configuration))
+- `setWarmupTolerance(tolerance)`: Update warmup tolerance at runtime (see [Tracking Stability](#tracking-stability))
+- `setMissTolerance(tolerance)`: Update miss tolerance at runtime (see [Tracking Stability](#tracking-stability))
+- `setMaxTrack(maxTrack)`: Update maximum tracking count at runtime
+- `setTargetFPS(fps)`: Update target frame rate at runtime
+- `getConfig()`: Get current configuration values
 - `addAnchor(targetIndex)`: Add a 3D anchor to a target
 - `addCSSAnchor(targetIndex)`: Add a CSS3D anchor to a target
 
@@ -251,6 +270,7 @@ const mindarThree = new MindARThree({
   uiError: string,                   // Optional: "yes" | "no" (default: "yes")
   filterMinCF: number,              // Optional: Filter cutoff frequency
   filterBeta: number,                // Optional: Filter beta value
+  filterDCutOff: number,            // Optional: Filter derivative cutoff (default: 0.001)
   userDeviceId: string,              // Optional: Specific camera ID
   environmentDeviceId: string,       // Optional: Specific camera ID
   disableFaceMirror: boolean,        // Optional: Disable face mirroring (default: false)
@@ -284,8 +304,232 @@ await mindarThree.setResolution('1080p');  // Switch to 1080p
 - `stop()`: Stop the AR session
 - `switchCamera()`: Switch between front and back cameras
 - `setResolution(resolution)`: Change camera resolution at runtime (e.g., `"360p"`, `"720p"`, `"1080p"`)
+- `setFilterParams({filterMinCF, filterBeta, filterDCutOff})`: Update filter parameters at runtime (see [Filter Configuration](#filter-configuration))
+- `getConfig()`: Get current configuration values
 - `addAnchor(index)`: Add a 3D anchor to face (index 0 for face)
 - `addFaceMesh()`: Add a face mesh for occlusion
+
+## Configuration Guide
+
+### Filter Configuration
+
+MindAR uses the **One Euro Filter** algorithm to smooth tracking data and reduce jitter. The filter dynamically adjusts its responsiveness based on movement speed, balancing smoothness and lag.
+
+#### Filter Parameters
+
+**`filterMinCF` (Minimum Cutoff Frequency)**
+- **What it does**: Sets the baseline smoothing level. Lower values = smoother but more laggy, higher values = more responsive but potentially jittery.
+- **Recommended values**:
+  - **Image Tracking**: `0.001` to `0.01` Hz (default: `0.001`)
+    - `0.001` Hz: Very smooth, minimal jitter (best for slow movements)
+    - `0.005` Hz: Balanced smoothness and responsiveness
+    - `0.01` Hz: More responsive, may show slight jitter
+  - **Face Tracking**: `0.001` to `0.005` Hz (default: `0.001`)
+    - Face tracking typically needs more smoothing due to natural head movements
+- **When to adjust**: 
+  - Decrease if tracking is jittery during slow movements
+  - Increase if there's noticeable lag during fast movements
+
+**`filterBeta` (Speed Coefficient)**
+- **What it does**: Controls how quickly the filter adapts to fast movements. Higher values = less lag during rapid changes, but may allow more noise.
+- **Recommended values**:
+  - **Image Tracking**: `500` to `2000` (default: `1000`)
+    - `500`: More stable, less responsive to fast movements
+    - `1000`: Balanced (recommended starting point)
+    - `2000`: Very responsive, may show noise during rapid movements
+  - **Face Tracking**: `0.5` to `2.0` (default: `1.0`)
+    - Face tracking uses lower values due to smoother natural movements
+- **When to adjust**:
+  - Increase if there's lag when quickly moving the target
+  - Decrease if tracking becomes noisy during fast movements
+
+**`filterDCutOff` (Derivative Cutoff)**
+- **What it does**: Filters the rate of change (derivative) of the signal. Controls how the filter adapts to changes in movement speed. Typically kept constant.
+- **Recommended value**: `0.001` Hz (1 Hz) - rarely needs adjustment (default)
+- **When to adjust**: 
+  - Only if you need fine-tuning of how the filter responds to acceleration
+  - Increase slightly (e.g., `0.002`) if filter seems too slow to adapt to speed changes
+  - Decrease slightly (e.g., `0.0005`) if filter is too sensitive to acceleration changes
+
+#### Example: Tuning Filter Parameters
+
+```javascript
+const mindarThree = new MindARThree.Image.MindARThree({
+  container: document.body,
+  imageTargetSrc: './targets.mind',
+  // Start with recommended values
+  filterMinCF: 0.001,  // Smooth tracking
+  filterBeta: 1000     // Balanced responsiveness
+});
+
+await mindarThree.start();
+
+// Adjust at runtime based on performance
+// If tracking is jittery:
+mindarThree.setFilterParams({
+  filterMinCF: 0.0005,  // More smoothing
+  filterBeta: 800,      // Less aggressive adaptation
+  filterDCutOff: 0.001  // Keep default
+});
+
+// If tracking is laggy:
+mindarThree.setFilterParams({
+  filterMinCF: 0.005,   // Less smoothing
+  filterBeta: 1500,     // More aggressive adaptation
+  filterDCutOff: 0.001  // Keep default
+});
+```
+
+### Tracking Stability
+
+These parameters control when targets appear and disappear, helping prevent flickering and false detections.
+
+**`warmupTolerance` (Image Tracking Only)**
+- **What it does**: Number of consecutive successful tracking frames required before showing a target. Prevents false positives from brief detections.
+- **Recommended values**: `3` to `10` frames (default: `5`)
+  - `3-5`: Fast appearance, may show brief false detections
+  - `5-8`: Balanced (recommended for most use cases)
+  - `8-10`: Very stable, slower to appear but fewer false positives
+- **When to adjust**:
+  - Increase if targets appear/disappear too quickly (flickering)
+  - Decrease if targets take too long to appear
+
+**`missTolerance` (Image Tracking Only)**
+- **What it does**: Number of consecutive failed tracking frames before hiding a target. Prevents flickering when tracking is temporarily lost.
+- **Recommended values**: `3` to `10` frames (default: `5`)
+  - `3-5`: Quick to hide, may flicker if tracking is unstable
+  - `5-8`: Balanced (recommended for most use cases)
+  - `8-10`: Very persistent, stays visible longer during brief tracking losses
+- **When to adjust**:
+  - Increase if targets disappear too quickly during brief occlusions
+  - Decrease if targets stay visible too long after being lost
+
+#### Example: Optimizing Tracking Stability
+
+```javascript
+const mindarThree = new MindARThree.Image.MindARThree({
+  container: document.body,
+  imageTargetSrc: './targets.mind',
+  // Stable tracking settings
+  warmupTolerance: 8,   // Wait 8 frames before showing
+  missTolerance: 6      // Hide after 6 missed frames
+});
+
+await mindarThree.start();
+
+// Adjust for different scenarios
+// For fast-paced interactions:
+mindarThree.setWarmupTolerance(3);
+mindarThree.setMissTolerance(3);
+
+// For stable presentations:
+mindarThree.setWarmupTolerance(10);
+mindarThree.setMissTolerance(8);
+```
+
+### Multi-Target Tracking
+
+**`maxTrack` (Image Tracking Only)**
+- **What it does**: Maximum number of targets that can be tracked simultaneously.
+- **Recommended values**: `1` to `4` (default: `1`)
+  - `1`: Single target (best performance, recommended for most cases)
+  - `2-3`: Multiple targets (good for interactive experiences)
+  - `4+`: Many targets (may impact performance on lower-end devices)
+- **Performance impact**: Higher values increase CPU/GPU usage
+- **When to adjust**: Set based on your use case requirements
+
+```javascript
+const mindarThree = new MindARThree.Image.MindARThree({
+  container: document.body,
+  imageTargetSrc: './targets.mind',
+  maxTrack: 2  // Track up to 2 targets simultaneously
+});
+
+// Change at runtime
+mindarThree.setMaxTrack(3);
+```
+
+### Performance Tuning
+
+**`targetFPS`**
+- **What it does**: Limits the processing frame rate to reduce CPU/GPU usage.
+- **Recommended values**: `null` (unlimited) or `15` to `30` FPS
+  - `null`: Maximum performance (default, recommended for most cases)
+  - `30`: Smooth on most devices
+  - `15-20`: Better for lower-end devices or battery conservation
+- **When to adjust**: Use on mobile devices or when battery life is a concern
+
+```javascript
+const mindarThree = new MindARThree.Image.MindARThree({
+  container: document.body,
+  imageTargetSrc: './targets.mind',
+  targetFPS: 30  // Limit to 30 FPS for better battery life
+});
+
+// Adjust at runtime
+mindarThree.setTargetFPS(20);  // Lower for battery saving
+mindarThree.setTargetFPS(null); // Unlimited for best performance
+```
+
+### Getting Current Configuration
+
+You can retrieve the current configuration at any time:
+
+```javascript
+const config = mindarThree.getConfig();
+console.log(config);
+// {
+//   filterMinCF: 0.001,
+//   filterBeta: 1000,
+//   filterDCutOff: 0.001,
+//   warmupTolerance: 5,
+//   missTolerance: 5,
+//   maxTrack: 1,
+//   targetFPS: null,
+//   controller: { ... }  // Detailed controller state
+// }
+```
+
+### Quick Reference: Recommended Settings
+
+**For Smooth, Stable Tracking (Default)**
+```javascript
+{
+  filterMinCF: 0.001,
+  filterBeta: 1000,        // Image: 1000, Face: 1.0
+  filterDCutOff: 0.001,   // Default, rarely needs adjustment
+  warmupTolerance: 5,      // Image only
+  missTolerance: 5,         // Image only
+  maxTrack: 1,             // Image only
+  targetFPS: null
+}
+```
+
+**For Fast, Responsive Tracking**
+```javascript
+{
+  filterMinCF: 0.005,
+  filterBeta: 1500,        // Image: 1500, Face: 1.5
+  filterDCutOff: 0.001,   // Keep default
+  warmupTolerance: 3,     // Image only
+  missTolerance: 3,       // Image only
+  maxTrack: 1,
+  targetFPS: null
+}
+```
+
+**For Lower-End Devices**
+```javascript
+{
+  filterMinCF: 0.001,
+  filterBeta: 800,
+  filterDCutOff: 0.001,   // Keep default
+  warmupTolerance: 8,
+  missTolerance: 6,
+  maxTrack: 1,
+  targetFPS: 20           // Limit FPS
+}
+```
 
 ## Examples
 
@@ -460,8 +704,14 @@ Use the online compiler tool: [https://hiukim.github.io/mind-ar-js-doc/tools/com
 **Solutions**:
 - Ensure good lighting conditions
 - Use high-contrast target images
-- Adjust filter parameters (`filterMinCF`, `filterBeta`)
-- Reduce tracking resolution if on mobile
+- **Adjust filter parameters** - See [Filter Configuration](#filter-configuration) for detailed tuning guide
+  - For jittery tracking: Decrease `filterMinCF` (e.g., `0.0005`)
+  - For laggy tracking: Increase `filterMinCF` (e.g., `0.005`) or `filterBeta`
+- **Adjust stability parameters** - See [Tracking Stability](#tracking-stability)
+  - Increase `warmupTolerance` if targets flicker
+  - Increase `missTolerance` if targets disappear too quickly
+- Reduce tracking resolution if on mobile (`setResolution('360p')`)
+- Limit frame rate on lower-end devices (`targetFPS: 20`)
 - Check browser console for errors
 
 #### Build Errors

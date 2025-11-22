@@ -17,6 +17,7 @@ export class ARSession {
       inputHeight: this.video.videoHeight,
       filterMinCF: this.controllerConfig.filterMinCF,
       filterBeta: this.controllerConfig.filterBeta,
+      filterDCutOff: this.controllerConfig.filterDCutOff,
       warmupTolerance: this.controllerConfig.warmupTolerance,
       missTolerance: this.controllerConfig.missTolerance,
       maxTrack: this.controllerConfig.maxTrack,

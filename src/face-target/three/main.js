@@ -17,6 +17,7 @@ export class MindARThree {
     uiError = "yes",
     filterMinCF = null,
     filterBeta = null,
+    filterDCutOff = null,
     userDeviceId = null,
     environmentDeviceId = null,
     disableFaceMirror = false,
@@ -25,6 +26,7 @@ export class MindARThree {
     this.container = container;
     this.filterMinCF = filterMinCF;
     this.filterBeta = filterBeta;
+    this.filterDCutOff = filterDCutOff;
     this.userDeviceId = userDeviceId;
     this.environmentDeviceId = environmentDeviceId;
     this.disableFaceMirror = disableFaceMirror;
@@ -229,6 +231,42 @@ export class MindARThree {
     }
   }
 
+  setFilterParams({filterMinCF, filterBeta, filterDCutOff}) {
+    // Update stored values
+    if (filterMinCF !== undefined) {
+      this.filterMinCF = filterMinCF;
+    }
+    if (filterBeta !== undefined) {
+      this.filterBeta = filterBeta;
+    }
+    if (filterDCutOff !== undefined) {
+      this.filterDCutOff = filterDCutOff;
+    }
+
+    // Update controller if AR session is running
+    if (this.arSession && this.arSession.getController()) {
+      this.arSession.getController().setFilterParams({filterMinCF, filterBeta, filterDCutOff});
+    }
+  }
+
+  getConfig() {
+    const config = {
+      filterMinCF: this.filterMinCF,
+      filterBeta: this.filterBeta,
+      filterDCutOff: this.filterDCutOff
+    };
+
+    // Include controller config if AR session is running
+    if (this.arSession && this.arSession.getController()) {
+      return {
+        ...config,
+        controller: this.arSession.getController().getConfig()
+      };
+    }
+
+    return config;
+  }
+
   async _startAR() {
     const video = this.videoManager.getVideo();
 
@@ -236,6 +274,7 @@ export class MindARThree {
     this.arSession = new ARSession(video, {
       filterMinCF: this.filterMinCF,
       filterBeta: this.filterBeta,
+      filterDCutOff: this.filterDCutOff,
       onUpdate: ({ hasFace, estimateResult }) => {
         this.latestEstimate = hasFace ? estimateResult : null;
         if (this.matrixUpdater) {

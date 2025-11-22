@@ -10,18 +10,20 @@ import {OneEuroFilter} from '../libs/one-euro-filter.js';
 
 const DEFAULT_FILTER_CUTOFF = 0.001; // 1Hz. time period in milliseconds
 const DEFAULT_FILTER_BETA = 1000;
+const DEFAULT_FILTER_DCUTOFF = 0.001; // 1Hz. derivative cutoff
 const DEFAULT_WARMUP_TOLERANCE = 5;
 const DEFAULT_MISS_TOLERANCE = 5;
 
 class Controller {
   constructor({inputWidth, inputHeight, onUpdate=null, debugMode=false, maxTrack=1, 
-    warmupTolerance=null, missTolerance=null, filterMinCF=null, filterBeta=null, targetFPS=null}) {
+    warmupTolerance=null, missTolerance=null, filterMinCF=null, filterBeta=null, filterDCutOff=null, targetFPS=null}) {
 
     this.inputWidth = inputWidth;
     this.inputHeight = inputHeight;
     this.maxTrack = maxTrack;
     this.filterMinCF = filterMinCF === null? DEFAULT_FILTER_CUTOFF: filterMinCF;
     this.filterBeta = filterBeta === null? DEFAULT_FILTER_BETA: filterBeta;
+    this.filterDCutOff = filterDCutOff === null? DEFAULT_FILTER_DCUTOFF: filterDCutOff;
     this.warmupTolerance = warmupTolerance === null? DEFAULT_WARMUP_TOLERANCE: warmupTolerance;
     this.missTolerance = missTolerance === null? DEFAULT_MISS_TOLERANCE: missTolerance;
     this.targetFPS = targetFPS;
@@ -177,7 +179,7 @@ class Controller {
 	currentModelViewTransform: null,
 	trackCount: 0,
 	trackMiss: 0,
-	filter: new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta})
+	filter: new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta, dCutOff: this.filterDCutOff})
       });
       //console.log("filterMinCF", this.filterMinCF, this.filterBeta);
     }
@@ -341,6 +343,83 @@ class Controller {
     this.targetFPS = targetFPS;
     this.frameInterval = targetFPS ? (1000 / targetFPS) : 0;
     this.lastFrameTime = 0; // Reset timing when changing FPS
+  }
+
+  setFilterParams({filterMinCF, filterBeta, filterDCutOff}) {
+    // Validate parameters
+    if (filterMinCF !== undefined && (typeof filterMinCF !== 'number' || filterMinCF < 0)) {
+      throw new Error('filterMinCF must be a non-negative number');
+    }
+    if (filterBeta !== undefined && (typeof filterBeta !== 'number' || filterBeta < 0)) {
+      throw new Error('filterBeta must be a non-negative number');
+    }
+    if (filterDCutOff !== undefined && (typeof filterDCutOff !== 'number' || filterDCutOff < 0)) {
+      throw new Error('filterDCutOff must be a non-negative number');
+    }
+
+    // Update stored values
+    if (filterMinCF !== undefined) {
+      this.filterMinCF = filterMinCF;
+    }
+    if (filterBeta !== undefined) {
+      this.filterBeta = filterBeta;
+    }
+    if (filterDCutOff !== undefined) {
+      this.filterDCutOff = filterDCutOff;
+    }
+
+    // Update all existing filter instances
+    if (this.trackingStates && this.trackingStates.length > 0) {
+      for (let i = 0; i < this.trackingStates.length; i++) {
+        const trackingState = this.trackingStates[i];
+        if (trackingState.filter) {
+          trackingState.filter.updateParams({
+            minCutOff: this.filterMinCF,
+            beta: this.filterBeta,
+            dCutOff: this.filterDCutOff
+          });
+        }
+      }
+    }
+  }
+
+  setWarmupTolerance(warmupTolerance) {
+    // Validate parameter
+    if (typeof warmupTolerance !== 'number' || warmupTolerance < 0) {
+      throw new Error('warmupTolerance must be a non-negative number');
+    }
+
+    this.warmupTolerance = warmupTolerance;
+  }
+
+  setMissTolerance(missTolerance) {
+    // Validate parameter
+    if (typeof missTolerance !== 'number' || missTolerance < 0) {
+      throw new Error('missTolerance must be a non-negative number');
+    }
+
+    this.missTolerance = missTolerance;
+  }
+
+  setMaxTrack(maxTrack) {
+    // Validate parameter
+    if (typeof maxTrack !== 'number' || maxTrack < 1) {
+      throw new Error('maxTrack must be a positive integer');
+    }
+
+    this.maxTrack = Math.floor(maxTrack);
+  }
+
+  getConfig() {
+    return {
+      filterMinCF: this.filterMinCF,
+      filterBeta: this.filterBeta,
+      filterDCutOff: this.filterDCutOff,
+      warmupTolerance: this.warmupTolerance,
+      missTolerance: this.missTolerance,
+      maxTrack: this.maxTrack,
+      targetFPS: this.targetFPS
+    };
   }
 
   async detect(input) {
