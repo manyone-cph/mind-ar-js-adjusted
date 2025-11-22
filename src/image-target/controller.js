@@ -35,6 +35,7 @@ class Controller {
     this.onUpdate = onUpdate;
     this.debugMode = debugMode;
     this.processingVideo = false;
+    this.processingPaused = false; // Pause flag for troubleshooting
     this.interestedTargetIndex = -1;
     this.trackingStates = [];
 
@@ -188,6 +189,12 @@ class Controller {
     const processFrame = async () => {
       if (!this.processingVideo) return;
 
+      // Pause check: skip processing if paused (video continues playing)
+      // The callback will still schedule the next frame to maintain the loop
+      if (this.processingPaused) {
+        return;
+      }
+
       // Frame rate limiting: skip frame if not enough time has passed
       if (this.targetFPS && this.frameInterval > 0) {
         const now = performance.now();
@@ -308,6 +315,12 @@ class Controller {
 	while (true) {
 	  if (!this.processingVideo) break;
 	  
+	  // Pause check: skip processing if paused (video continues playing)
+	  if (this.processingPaused) {
+	    await tf.nextFrame();
+	    continue;
+	  }
+	  
 	  // For polling fallback, we need to check frame rate limiting here too
 	  if (this.targetFPS && this.frameInterval > 0) {
 	    const now = performance.now();
@@ -331,7 +344,22 @@ class Controller {
 
   stopProcessVideo() {
     this.processingVideo = false;
+    this.processingPaused = false; // Reset pause state when stopping
     this.lastFrameTime = 0; // Reset frame timing when stopping
+  }
+
+  pauseProcessing() {
+    this.processingPaused = true;
+  }
+
+  resumeProcessing() {
+    this.processingPaused = false;
+    // Reset frame timing to avoid immediate frame skip after resume
+    this.lastFrameTime = 0;
+  }
+
+  isProcessingPaused() {
+    return this.processingPaused;
   }
 
   setTargetFPS(targetFPS) {

@@ -153,6 +153,28 @@ export class MindARThree {
     }
   }
 
+  pauseProcessing() {
+    // Pause ML processing while keeping video running
+    if (this.arSession && this.arSession.getController()) {
+      this.arSession.getController().pauseProcessing();
+    }
+  }
+
+  resumeProcessing() {
+    // Resume ML processing
+    if (this.arSession && this.arSession.getController()) {
+      this.arSession.getController().resumeProcessing();
+    }
+  }
+
+  isProcessingPaused() {
+    // Check if processing is currently paused
+    if (this.arSession && this.arSession.getController()) {
+      return this.arSession.getController().isProcessingPaused();
+    }
+    return false;
+  }
+
   setFilterParams({filterMinCF, filterBeta, filterDCutOff}) {
     // Update stored values
     if (filterMinCF !== undefined) {
