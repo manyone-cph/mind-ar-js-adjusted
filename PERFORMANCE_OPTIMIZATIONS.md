@@ -372,8 +372,8 @@ const processFrame = (now) => {
 
 ### Medium-term (Requires more changes):
 
-4. **Direct video texture access** - Biggest performance gain but needs shader changes
-5. **OffscreenCanvas** - Good for modern browsers with fallback
+4. ✅ **Direct video texture access** - Biggest performance gain but needs shader changes **[COMPLETED]**
+5. **OffscreenCanvas** - Good for modern browsers with fallback (Not needed - canvas removed entirely)
 
 ### Long-term (Architecture changes):
 
