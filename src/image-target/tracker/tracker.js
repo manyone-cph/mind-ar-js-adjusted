@@ -57,21 +57,45 @@ class Tracker {
     let debugExtra = {};
 
     const modelViewProjectionTransform = buildModelViewProjectionTransform(this.projectionTransform, lastModelViewTransform);
-    const modelViewProjectionTransformT = this._buildAdjustedModelViewTransform(modelViewProjectionTransform);
+    
+    // Wrap tensor operations in tf.tidy() for automatic cleanup
+    // Note: _computeMatching already uses tf.tidy() internally, so its tensors are kept alive
+    let projectedImageTClone;
+    let matchingPointsT, simT;
+    
+    tf.tidy(() => {
+      const modelViewProjectionTransformT = this._buildAdjustedModelViewTransform(modelViewProjectionTransform);
 
-    const markerWidth = this.markerDimensions[targetIndex][0];
-    const markerHeight = this.markerDimensions[targetIndex][1];
-    const keyframeWidth = this.trackingKeyframeList[targetIndex].width; 
-    const keyframeHeight = this.trackingKeyframeList[targetIndex].height; 
+      const markerWidth = this.markerDimensions[targetIndex][0];
+      const markerHeight = this.markerDimensions[targetIndex][1];
+      const keyframeWidth = this.trackingKeyframeList[targetIndex].width; 
+      const keyframeHeight = this.trackingKeyframeList[targetIndex].height; 
 
-    const featurePointsT = this.featurePointsListT[targetIndex];
-    const imagePixelsT = this.imagePixelsListT[targetIndex];
-    const imagePropertiesT = this.imagePropertiesListT[targetIndex];
+      const featurePointsT = this.featurePointsListT[targetIndex];
+      const imagePixelsT = this.imagePixelsListT[targetIndex];
+      const imagePropertiesT = this.imagePropertiesListT[targetIndex];
 
-    const projectedImageT = this._computeProjection(modelViewProjectionTransformT, inputImageT, targetIndex);
+      const projectedImageTTemp = this._computeProjection(modelViewProjectionTransformT, inputImageT, targetIndex);
+      
+      // Clone projectedImageT to keep it alive outside tidy() for _computeMatching
+      // Use tf.keep() to prevent disposal by tidy()
+      projectedImageTClone = tf.keep(projectedImageTTemp.clone());
+    });
+    
+    // Now call _computeMatching with the cloned tensor (it uses its own tf.tidy())
+    const matchingResult = this._computeMatching(
+      this.featurePointsListT[targetIndex],
+      this.imagePixelsListT[targetIndex],
+      this.imagePropertiesListT[targetIndex],
+      projectedImageTClone
+    );
+    matchingPointsT = matchingResult.matchingPointsT;
+    simT = matchingResult.simT;
 
-    const {matchingPointsT, simT} = this._computeMatching(featurePointsT, imagePixelsT, imagePropertiesT, projectedImageT);
+    // Cleanup cloned tensor
+    projectedImageTClone.dispose();
 
+    // Batch arraySync() operations - do both at once to reduce GPU-CPU sync overhead
     const matchingPoints = matchingPointsT.arraySync();
     const sim = simT.arraySync();
 
@@ -89,20 +113,18 @@ class Tracker {
       }
     }
 
+    // Cleanup tensors (these are kept alive by _computeMatching's tidy, but we dispose them here)
+    matchingPointsT.dispose();
+    simT.dispose();
+
     if (this.debugMode) {
       debugExtra = {
-	projectedImage: projectedImageT.arraySync(),
-	matchingPoints: matchingPointsT.arraySync(),
+	projectedImage: null, // Disposed by tidy()
+	matchingPoints: matchingPoints,
 	goodTrack,
 	trackedPoints: screenCoords
       }
     }
-
-    // tensors cleanup
-    modelViewProjectionTransformT.dispose();
-    projectedImageT.dispose();
-    matchingPointsT.dispose();
-    simT.dispose();
 
     return {worldCoords, screenCoords, debugExtra};
   }

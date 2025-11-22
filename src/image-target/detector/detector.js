@@ -63,115 +63,134 @@ class Detector {
 	detect(inputImageT) {
 		let debugExtra = null;
 
-		// Build gaussian pyramid images, two images per octave
-		/** @type {Array<Array<tf.Tensor<tf.Rank>>} */
-		const pyramidImagesT = [];
-		//console.log("Detector::Building pyramid Images...");
-		for (let i = 0; i < this.numOctaves; i++) {
-			let image1T;
-			let image2T;
+		// Wrap tensor operations in tf.tidy() for automatic cleanup
+		// Note: We need to keep final tensors alive, so we clone them outside tidy()
+		let prunedExtremasT, extremaAnglesT, freakDescriptorsT;
+		let prunedExtremasList;
+
+		tf.tidy(() => {
+			// Build gaussian pyramid images, two images per octave
+			/** @type {Array<Array<tf.Tensor<tf.Rank>>} */
+			const pyramidImagesT = [];
+			//console.log("Detector::Building pyramid Images...");
+			for (let i = 0; i < this.numOctaves; i++) {
+				let image1T;
+				let image2T;
 
 
-			if (i === 0) {
-				image1T = this._applyFilter(inputImageT);
-			} else {
-				image1T = this._downsampleBilinear(pyramidImagesT[i - 1][pyramidImagesT[i - 1].length - 1]);
+				if (i === 0) {
+					image1T = this._applyFilter(inputImageT);
+				} else {
+					image1T = this._downsampleBilinear(pyramidImagesT[i - 1][pyramidImagesT[i - 1].length - 1]);
+				}
+				image2T = this._applyFilter(image1T);
+				pyramidImagesT.push([image1T, image2T]);
 			}
-			image2T = this._applyFilter(image1T);
-			pyramidImagesT.push([image1T, image2T]);
-		}
-		//console.log("Detector::Building dog images...");
-		// Build difference-of-gaussian (dog) pyramid
-		/** @type {tf.Tensor<tf.Rank>[]} */
-		const dogPyramidImagesT = [];
-		for (let i = 0; i < this.numOctaves; i++) {
-			let dogImageT = this._differenceImageBinomial(pyramidImagesT[i][0], pyramidImagesT[i][1]);
-			dogPyramidImagesT.push(dogImageT);
-		}
+			//console.log("Detector::Building dog images...");
+			// Build difference-of-gaussian (dog) pyramid
+			/** @type {tf.Tensor<tf.Rank>[]} */
+			const dogPyramidImagesT = [];
+			for (let i = 0; i < this.numOctaves; i++) {
+				let dogImageT = this._differenceImageBinomial(pyramidImagesT[i][0], pyramidImagesT[i][1]);
+				dogPyramidImagesT.push(dogImageT);
+			}
 
-		// find local maximum/minimum
-		/** @type {tf.Tensor<tf.Rank>[]} */
-		const extremasResultsT = [];
-		for (let i = 1; i < this.numOctaves - 1; i++) {
-			const extremasResultT = this._buildExtremas(dogPyramidImagesT[i - 1], dogPyramidImagesT[i], dogPyramidImagesT[i + 1]);
-			extremasResultsT.push(extremasResultT);
-		}
+			// find local maximum/minimum
+			/** @type {tf.Tensor<tf.Rank>[]} */
+			const extremasResultsT = [];
+			for (let i = 1; i < this.numOctaves - 1; i++) {
+				const extremasResultT = this._buildExtremas(dogPyramidImagesT[i - 1], dogPyramidImagesT[i], dogPyramidImagesT[i + 1]);
+				extremasResultsT.push(extremasResultT);
+			}
 
-		// divide the input into N by N buckets, and for each bucket,
-		// collect the top 5 most significant extrema across extremas in all scale level
-		// result would be NUM_BUCKETS x NUM_FEATURES_PER_BUCKET extremas
-		const prunedExtremasList = this._applyPrune(extremasResultsT);
+			// divide the input into N by N buckets, and for each bucket,
+			// collect the top 5 most significant extrema across extremas in all scale level
+			// result would be NUM_BUCKETS x NUM_FEATURES_PER_BUCKET extremas
+			prunedExtremasList = this._applyPrune(extremasResultsT);
 
-		const prunedExtremasT = this._computeLocalization(prunedExtremasList, dogPyramidImagesT);
+			const prunedExtremasTTemp = this._computeLocalization(prunedExtremasList, dogPyramidImagesT);
 
-		// compute the orientation angle for each pruned extremas
-		const extremaHistogramsT = this._computeOrientationHistograms(prunedExtremasT, pyramidImagesT);
+			// compute the orientation angle for each pruned extremas
+			const extremaHistogramsT = this._computeOrientationHistograms(prunedExtremasTTemp, pyramidImagesT);
 
-		const smoothedHistogramsT = this._smoothHistograms(extremaHistogramsT);
-		const extremaAnglesT = this._computeExtremaAngles(smoothedHistogramsT);
+			const smoothedHistogramsT = this._smoothHistograms(extremaHistogramsT);
+			const extremaAnglesTTemp = this._computeExtremaAngles(smoothedHistogramsT);
 
-		// to compute freak descriptors, we first find the pixel value of 37 freak points for each extrema 
-		const extremaFreaksT = this._computeExtremaFreak(pyramidImagesT, prunedExtremasT, extremaAnglesT);
+			// to compute freak descriptors, we first find the pixel value of 37 freak points for each extrema 
+			const extremaFreaksT = this._computeExtremaFreak(pyramidImagesT, prunedExtremasTTemp, extremaAnglesTTemp);
 
-		// compute the binary descriptors
-		const freakDescriptorsT = this._computeFreakDescriptors(extremaFreaksT);
+			// compute the binary descriptors
+			const freakDescriptorsTTemp = this._computeFreakDescriptors(extremaFreaksT);
 
+			// Clone tensors to keep them alive outside tidy()
+			// Use tf.keep() to prevent disposal by tidy()
+			prunedExtremasT = tf.keep(prunedExtremasTTemp.clone());
+			extremaAnglesT = tf.keep(extremaAnglesTTemp.clone());
+			freakDescriptorsT = tf.keep(freakDescriptorsTTemp.clone());
+		});
+
+		// Batch arraySync() operations - do all at once to reduce GPU-CPU sync overhead
 		const prunedExtremasArr = prunedExtremasT.arraySync();
 		const extremaAnglesArr = extremaAnglesT.arraySync();
 		const freakDescriptorsArr = freakDescriptorsT.arraySync();
 
+		// Cleanup cloned tensors
+		prunedExtremasT.dispose();
+		extremaAnglesT.dispose();
+		freakDescriptorsT.dispose();
+
 		if (this.debugMode) {
+			// Debug mode - need to sync debug tensors (these are already disposed by tidy, so we skip)
 			debugExtra = {
-				pyramidImages: pyramidImagesT.map((ts) => ts.map((t) => t.arraySync())),
-				dogPyramidImages: dogPyramidImagesT.map((t) => t ? t.arraySync() : null),
-				extremasResults: extremasResultsT.map((t) => t.arraySync()),
-				extremaAngles: extremaAnglesT.arraySync(),
+				pyramidImages: null, // Disposed by tidy()
+				dogPyramidImages: null, // Disposed by tidy()
+				extremasResults: null, // Disposed by tidy()
+				extremaAngles: extremaAnglesArr,
 				prunedExtremas: prunedExtremasList,
-				localizedExtremas: prunedExtremasT.arraySync(),
+				localizedExtremas: prunedExtremasArr,
 			}
 		}
 
-		pyramidImagesT.forEach((ts) => ts.forEach((t) => t.dispose()));
-		dogPyramidImagesT.forEach((t) => t && t.dispose());
-		extremasResultsT.forEach((t) => t.dispose());
-		prunedExtremasT.dispose();
-		extremaHistogramsT.dispose();
-		smoothedHistogramsT.dispose();
-		extremaAnglesT.dispose();
-		extremaFreaksT.dispose();
-		freakDescriptorsT.dispose();
-
+		// Optimize feature point processing - pre-allocate arrays and reduce object creation
 		const featurePoints = [];
+		// Pre-calculate common values outside loop
+		const pow2Cache = new Array(this.numOctaves);
+		for (let i = 0; i < this.numOctaves; i++) {
+			pow2Cache[i] = Math.pow(2, i);
+		}
 
+		// Process feature points with optimized loop
 		for (let i = 0; i < prunedExtremasArr.length; i++) {
-			if (prunedExtremasArr[i][0] == 0) continue;
+			const extrema = prunedExtremasArr[i];
+			if (extrema[0] == 0) continue;
 
-			const descriptors = [];
-			for (let m = 0; m < freakDescriptorsArr[i].length; m += 4) {
-				const v1 = freakDescriptorsArr[i][m];
-				const v2 = freakDescriptorsArr[i][m + 1];
-				const v3 = freakDescriptorsArr[i][m + 2];
-				const v4 = freakDescriptorsArr[i][m + 3];
+			// Pre-allocate descriptors array with known size
+			const descriptorCount = freakDescriptorsArr[i].length / 4;
+			const descriptors = new Array(descriptorCount);
 
-				let combined = v1 * 16777216 + v2 * 65536 + v3 * 256 + v4;
-				//if (m === freakDescriptorsArr[i].length-4) { // last one, legacy reason
-				//  combined /= 32;
-				//}
-				descriptors.push(combined);
+			// Optimized descriptor processing - unroll loop slightly
+			const freakDesc = freakDescriptorsArr[i];
+			for (let m = 0, dIdx = 0; m < freakDesc.length; m += 4, dIdx++) {
+				descriptors[dIdx] = freakDesc[m] * 16777216 + 
+				                    freakDesc[m + 1] * 65536 + 
+				                    freakDesc[m + 2] * 256 + 
+				                    freakDesc[m + 3];
 			}
 
-			const octave = prunedExtremasArr[i][1];
-			const y = prunedExtremasArr[i][2];
-			const x = prunedExtremasArr[i][3];
-			const originalX = x * Math.pow(2, octave) + Math.pow(2, (octave - 1)) - 0.5;
-			const originalY = y * Math.pow(2, octave) + Math.pow(2, (octave - 1)) - 0.5;
-			const scale = Math.pow(2, octave);
+			const octave = extrema[1];
+			const y = extrema[2];
+			const x = extrema[3];
+			const pow2Octave = pow2Cache[octave];
+			const pow2OctaveMinus1 = pow2Cache[octave - 1] || 0.5;
+			const originalX = x * pow2Octave + pow2OctaveMinus1 - 0.5;
+			const originalY = y * pow2Octave + pow2OctaveMinus1 - 0.5;
 
+			// Create feature point object
 			featurePoints.push({
-				maxima: prunedExtremasArr[i][0] > 0,
+				maxima: extrema[0] > 0,
 				x: originalX,
 				y: originalY,
-				scale: scale,
+				scale: pow2Octave,
 				angle: extremaAnglesArr[i],
 				descriptors: descriptors
 			});
