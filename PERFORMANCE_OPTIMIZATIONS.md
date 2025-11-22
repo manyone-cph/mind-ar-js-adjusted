@@ -30,6 +30,52 @@
 - Tested on older browsers (uses fallback)
 - No breaking changes to existing API
 
+#### 2. Frame Rate Limiting (Implemented: 2024)
+**Files Modified:** 
+- `src/image-target/three/main.js`
+- `src/image-target/three/ar-session.js`
+- `src/image-target/controller.js`
+
+**Changes Made:**
+- Added `targetFPS` parameter to `MindARThree` constructor (default: `null` for unlimited)
+- Added `setTargetFPS(targetFPS)` method to `MindARThree` for runtime configuration
+- Implemented frame rate limiting in `Controller.processVideo()` using `performance.now()`
+- Frame rate limiting works with both `requestVideoFrameCallback` and polling fallback paths
+- Frames are skipped when processing would exceed the target FPS
+
+**Benefits:**
+- Reduces unnecessary frame processing
+- Better battery life on mobile devices
+- More consistent performance
+- Configurable at initialization or runtime
+- Set to `null` to disable (unlimited FPS)
+
+**API Usage:**
+```javascript
+// At initialization
+const mindar = new MindARThree({
+  container: document.body,
+  imageTargetSrc: './targets.mind',
+  targetFPS: 30  // Limit to 30 FPS
+});
+
+// Or at runtime
+mindar.setTargetFPS(30);  // Set to 30 FPS
+mindar.setTargetFPS(null);  // Disable limiting (unlimited)
+```
+
+**Implementation Details:**
+- Uses `performance.now()` for high-precision timing
+- Calculates frame interval: `1000 / targetFPS` milliseconds
+- Skips frames when `timeSinceLastFrame < frameInterval`
+- Works seamlessly with `requestVideoFrameCallback` optimization
+- Resets timing when FPS is changed or video processing stops
+
+**Testing Notes:**
+- Validates input (must be positive number or null)
+- Throws error on invalid values
+- No breaking changes (defaults to unlimited if not specified)
+
 ---
 
 ## Current Implementation Analysis
@@ -119,7 +165,9 @@ if (this.video.requestVideoFrameCallback) {
 - Need to handle rotation in shader instead of canvas
 - May need to adjust texture coordinates
 
-### 4. Frame Rate Limiting (Medium Impact)
+### 4. Frame Rate Limiting (Medium Impact) ✅ IMPLEMENTED
+
+**Status:** ✅ **Implemented** - See Change Log above for details
 
 **Current:** Processes every available frame
 
@@ -185,7 +233,7 @@ const processFrame = (now) => {
 ### Immediate Wins (Easy to implement, high impact):
 
 1. ✅ **Add `requestVideoFrameCallback`** - Drop-in replacement for polling **[COMPLETED]**
-2. **Add frame rate limiting** - Simple time-based throttling
+2. ✅ **Add frame rate limiting** - Simple time-based throttling **[COMPLETED]**
 3. **Optimize canvas context** - Cache transforms, use hints
 
 ### Medium-term (Requires more changes):

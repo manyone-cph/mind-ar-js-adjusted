@@ -21,7 +21,8 @@ export class MindARThree {
     missTolerance = null,
     userDeviceId = null,
     environmentDeviceId = null,
-    resolution = null
+    resolution = null,
+    targetFPS = null
   }) {
     this.container = container;
     this.imageTargetSrc = imageTargetSrc;
@@ -33,6 +34,7 @@ export class MindARThree {
     this.userDeviceId = userDeviceId;
     this.environmentDeviceId = environmentDeviceId;
     this.resolution = resolution;
+    this.targetFPS = targetFPS;
 
     this.shouldFaceUser = false;
 
@@ -135,6 +137,20 @@ export class MindARThree {
     }
   }
 
+  setTargetFPS(targetFPS) {
+    // Validate targetFPS
+    if (targetFPS !== null && (typeof targetFPS !== 'number' || targetFPS <= 0)) {
+      throw new Error('targetFPS must be a positive number or null (for unlimited)');
+    }
+
+    this.targetFPS = targetFPS;
+    
+    // Update controller if AR session is running
+    if (this.arSession && this.arSession.getController()) {
+      this.arSession.getController().setTargetFPS(targetFPS);
+    }
+  }
+
   async _startAR() {
     const video = this.videoManager.getVideo();
 
@@ -164,6 +180,7 @@ export class MindARThree {
         warmupTolerance: this.warmupTolerance,
         missTolerance: this.missTolerance,
         maxTrack: this.maxTrack,
+        targetFPS: this.targetFPS,
         onUpdate: (data) => {
           if (data.type === 'updateMatrix') {
             const { targetIndex, worldMatrix } = data;

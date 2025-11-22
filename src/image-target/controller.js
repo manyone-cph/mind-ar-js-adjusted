@@ -15,7 +15,7 @@ const DEFAULT_MISS_TOLERANCE = 5;
 
 class Controller {
   constructor({inputWidth, inputHeight, onUpdate=null, debugMode=false, maxTrack=1, 
-    warmupTolerance=null, missTolerance=null, filterMinCF=null, filterBeta=null}) {
+    warmupTolerance=null, missTolerance=null, filterMinCF=null, filterBeta=null, targetFPS=null}) {
 
     this.inputWidth = inputWidth;
     this.inputHeight = inputHeight;
@@ -24,6 +24,9 @@ class Controller {
     this.filterBeta = filterBeta === null? DEFAULT_FILTER_BETA: filterBeta;
     this.warmupTolerance = warmupTolerance === null? DEFAULT_WARMUP_TOLERANCE: warmupTolerance;
     this.missTolerance = missTolerance === null? DEFAULT_MISS_TOLERANCE: missTolerance;
+    this.targetFPS = targetFPS;
+    this.frameInterval = targetFPS ? (1000 / targetFPS) : 0;
+    this.lastFrameTime = 0;
     this.cropDetector = new CropDetector(this.inputWidth, this.inputHeight, debugMode);
     this.inputLoader = new InputLoader(this.inputWidth, this.inputHeight);
     this.markerDimensions = null;
@@ -183,6 +186,19 @@ class Controller {
     const processFrame = async () => {
       if (!this.processingVideo) return;
 
+      // Frame rate limiting: skip frame if not enough time has passed
+      if (this.targetFPS && this.frameInterval > 0) {
+        const now = performance.now();
+        const timeSinceLastFrame = now - this.lastFrameTime;
+        
+        if (timeSinceLastFrame < this.frameInterval) {
+          // Skip this frame, schedule next check
+          return;
+        }
+        
+        this.lastFrameTime = now;
+      }
+
       const inputT = this.inputLoader.loadInput(input);
 
       const nTracking = this.trackingStates.reduce((acc, s) => {
@@ -289,6 +305,20 @@ class Controller {
       const startProcessing = async() => {
 	while (true) {
 	  if (!this.processingVideo) break;
+	  
+	  // For polling fallback, we need to check frame rate limiting here too
+	  if (this.targetFPS && this.frameInterval > 0) {
+	    const now = performance.now();
+	    const timeSinceLastFrame = now - this.lastFrameTime;
+	    
+	    if (timeSinceLastFrame < this.frameInterval) {
+	      await tf.nextFrame();
+	      continue;
+	    }
+	    
+	    this.lastFrameTime = now;
+	  }
+	  
 	  await processFrame();
 	  await tf.nextFrame();
 	}
@@ -299,6 +329,18 @@ class Controller {
 
   stopProcessVideo() {
     this.processingVideo = false;
+    this.lastFrameTime = 0; // Reset frame timing when stopping
+  }
+
+  setTargetFPS(targetFPS) {
+    // Validate targetFPS
+    if (targetFPS !== null && (typeof targetFPS !== 'number' || targetFPS <= 0)) {
+      throw new Error('targetFPS must be a positive number or null (for unlimited)');
+    }
+
+    this.targetFPS = targetFPS;
+    this.frameInterval = targetFPS ? (1000 / targetFPS) : 0;
+    this.lastFrameTime = 0; // Reset timing when changing FPS
   }
 
   async detect(input) {

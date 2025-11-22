@@ -20,6 +20,7 @@ export class ARSession {
       warmupTolerance: this.controllerConfig.warmupTolerance,
       missTolerance: this.controllerConfig.missTolerance,
       maxTrack: this.controllerConfig.maxTrack,
+      targetFPS: this.controllerConfig.targetFPS,
       onUpdate: this.controllerConfig.onUpdate
     });
 
