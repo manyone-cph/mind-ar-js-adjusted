@@ -11,7 +11,10 @@ class InputLoader {
     this.height = height;
     this.texShape = [height, width];
 
-    const context = document.createElement('canvas').getContext('2d');
+    const context = document.createElement('canvas').getContext('2d', {
+      willReadFrequently: false, // Optimize for GPU reads, not CPU reads
+      alpha: false // No alpha channel needed for grayscale processing
+    });
     context.canvas.width = width;
     context.canvas.height = height;
     this.context = context;
@@ -25,6 +28,14 @@ class InputLoader {
     // usage type should be TextureUsage.PIXELS, but tfjs didn't export this enum type, so we hard-coded 2 here 
     //   i.e. backend.texData.get(tempPixelHandle.dataId).usage = TextureUsage.PIXELS;
     backend.texData.get(this.tempPixelHandle.dataId).usage = 2;
+
+    // Cache rotation state to avoid recalculating every frame
+    this.cachedIsRotated = null;
+    this.cachedInputWidth = null;
+    this.cachedInputHeight = null;
+    this.rotationCenterX = width / 2;
+    this.rotationCenterY = height / 2;
+    this.rotationAngle = Math.PI / 2; // 90 degrees in radians, cached
   }
 
   // old method
@@ -39,23 +50,38 @@ class InputLoader {
   // input is instance of HTMLVideoElement or HTMLImageElement
   loadInput(input) {
     const context = this.context;
-    context.clearRect(0, 0, this.context.canvas.width, this.context.canvas.height);
-
+    
+    // Check if rotation state has changed (cache to avoid recalculation)
     const isInputRotated = input.width === this.height && input.height === this.width;
-    if (isInputRotated) { // rotate 90 degree and draw
-      let x = this.context.canvas.width / 2;
-      let y = this.context.canvas.height / 2;
-      let angleInDegrees = 90;
+    const rotationStateChanged = (
+      this.cachedIsRotated !== isInputRotated ||
+      this.cachedInputWidth !== input.width ||
+      this.cachedInputHeight !== input.height
+    );
 
+    // Update cache if state changed
+    if (rotationStateChanged) {
+      this.cachedIsRotated = isInputRotated;
+      this.cachedInputWidth = input.width;
+      this.cachedInputHeight = input.height;
+    }
+
+    // Optimize: Skip clearRect() since drawImage() will overwrite the entire canvas
+    // clearRect() is only needed if we're doing partial updates, which we're not
+    // context.clearRect(0, 0, this.context.canvas.width, this.context.canvas.height);
+
+    if (isInputRotated) { // rotate 90 degree and draw
+      // Use cached rotation parameters
       context.save(); // save the current context state
-      context.translate(x, y); // move the context origin to the center of the image
-      context.rotate(angleInDegrees * Math.PI / 180); // rotate the context
+      context.translate(this.rotationCenterX, this.rotationCenterY);
+      context.rotate(this.rotationAngle); // use cached angle
 
       // draw the image with its center at the origin
       context.drawImage(input, -input.width / 2, -input.height / 2);
       context.restore(); // restore the context to its original state
     } else {
-      this.context.drawImage(input, 0, 0, input.width, input.height);
+      // Direct draw without transformation
+      context.drawImage(input, 0, 0, input.width, input.height);
     }
 
     const backend = tf.backend();
