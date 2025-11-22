@@ -1,224 +1,514 @@
 # MindAR
 
-<img src="https://hiukim.github.io/mind-ar-js-doc/assets/images/multi-targets-demo-8b5fc868f6b0847a9818e8bf0ba2c1c3.gif" height="250"><img src="https://hiukim.github.io/mind-ar-js-doc/assets/images/interactive-demo-1ab348a381cbd808f4d52c8750524d11.gif" height="250"><img src="https://hiukim.github.io/mind-ar-js-doc/assets/images/face-tryon-demo-369c4ba701f1df2099ecf05c27f0c944.gif" height="250">
+<div align="center">
 
+![MindAR Logo](https://hiukim.github.io/mind-ar-js-doc/assets/images/multi-targets-demo-8b5fc868f6b0847a9818e8bf0ba2c1c3.gif)
 
-MindAR is a web augmented reality library. Highlighted features include:
+**A powerful, open-source Web Augmented Reality framework built with pure JavaScript**
 
-:star: Support Image tracking and Face tracking. For Location or Fiducial-Markers Tracking, checkout [AR.js](https://github.com/AR-js-org/AR.js)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://badge.fury.io/js/mind-ar.svg)](https://badge.fury.io/js/mind-ar)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D14.0.0-brightgreen)](https://nodejs.org/)
 
-:star: Written in pure javascript, end-to-end from the underlying computer vision engine to frontend
+</div>
 
-:star: Utilize gpu (through webgl) and web worker for performance
+## Table of Contents
 
-:star: Developer friendly. Easy to setup. With AFRAME extension, you can create an app with only 10 lines of codes
+- [Overview](#overview)
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
+- [API Reference](#api-reference)
+- [Examples](#examples)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Browser Compatibility](#browser-compatibility)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+- [Credits](#credits)
 
-# Fund Raising
+## Overview
 
-MindAR is the only actively maintained web AR SDK which offer comparable features to commercial alternatives. This library is currently maintained by me as an individual developer. To raise fund for continuous development and to provide timely supports and responses to issues, here is a list of related projects/ services that you can support.
+MindAR is a comprehensive Web Augmented Reality (WebAR) library that enables developers to create immersive AR experiences directly in web browsers without requiring native mobile apps. Built entirely in JavaScript, MindAR provides end-to-end AR capabilities from computer vision processing to 3D rendering.
 
-<table>
-  <tbody>
-    <tr>
-      <td valign="top">
-        <h2>Unity WebAR Foundation</h2>
-        <p>
-          <a href="https://assetstore.unity.com/packages/tools/integration/webar-foundation-250806">WebAR Foundation</a> is a unity package that allows Unity developer to build WebGL-platform AR applications. It acts as a Unity Plugin that wraps around popular Web SDK.
-        </p>
-        <p>
-          If you are a Unity developer, check it out! <a href="https://github.com/hiukim/unity-webar-foundation" target="_blank">https://github.com/hiukim/unity-webar-foundation</a>
-        </p>
-        <p>
-      </td>
-      <td><img src="https://user-images.githubusercontent.com/459126/240146462-c7c2559d-cde9-43cd-846a-cf490ce99bb3.png" border="10"/></td>
-    </tr>
-    <tr>
-      <td valign="top">
-        <h2>Web AR Development Course</h2>
-        <p>I'm offering a WebAR development course in Udemy. It's a very comprehensive guide to Web AR development, not limited to MindAR.</p>
-        <p>Check it out if you are interested: <a target="_blank" href="https://www.udemy.com/course/introduction-to-web-ar-development/?referralCode=D2565F4CA6D767F30D61">https://www.udemy.com/course/introduction-to-web-ar-development/?referralCode=D2565F4CA6D767F30D61</a></p>
-      </td>
-      <td width="50%">
-        <img src="https://user-images.githubusercontent.com/459126/141425015-f5fe2912-b26d-4366-8952-5866a072fb34.jpg"/>
-      </td>
-    </tr>
-    <tr>
-      <td valign="top">
-        <h2>MindAR Studio</h2>
-        <p>
-          MindAR Studio allows you to build Face Tracking AR without coding. You can build AR effects through a drag-n-drop editor and export static webpages for self-host. Free to use!
-        </p>
-        <p>
-          Check it out if you are interested! <a href="https://studio.mindar.org" target="_blank">https://studio.mindar.org</a>
-        </p>
-      </td>
-      <td><img src="https://www.mindar.org/content/images/2022/07/screenshot.png" border="10"/></td>
-    </tr>    
-    <tr>
-      <td valign="top">
-        <h2>Pictarize</h2>
-        <p>
-          Pictarize is a hosted platform for creating and publishing Image Tracking AR applications. Free to use!
-        </p>
-        <p>
-          Check it out if you are interested! <a href="https://pictarize.com" target="_blank">https://pictarize.com</a>
-        </p>
-      </td>
-      <td><img src="https://hiukim.github.io/mind-ar-js-doc/assets/images/pictarize-studio-98ea8d35d963ebcd7d31ca7695c3f984.png" border="10"/></td>
-    </tr>
-  </tbody>
-</table>
+### Key Highlights
 
-# Documentation
+- 🌐 **Pure JavaScript**: No native dependencies, runs entirely in the browser
+- 🚀 **High Performance**: GPU-accelerated through WebGL and TensorFlow.js
+- 📱 **Mobile-Friendly**: Works on both desktop and mobile devices
+- 🎨 **Three.js Integration**: Seamless integration with Three.js for 3D rendering
+- 🔧 **Developer-Friendly**: Simple API and comprehensive documentation
+- 🎯 **Two Tracking Modes**: Image tracking and face tracking capabilities
 
-Official Documentation: https://hiukim.github.io/mind-ar-js-doc
+## Features
 
-# Demo - Try it yourself
+### Image Tracking
+- Track multiple image targets simultaneously
+- Real-time 6DOF pose estimation
+- Robust tracking with filtering and smoothing
+- Support for custom target image compilation
+- Works with printed images, screens, or any flat surface
 
-<table>
-  <tbody>
-    <tr>
-      <td valign="top" width="50%">
-        <h2>Image Tracking - Basic Example</h2>
-        <p>Demo video: https://youtu.be/hgVB9HpQpqY </p>
-        <p>Try it yourself: https://hiukim.github.io/mind-ar-js-doc/examples/basic/</p>
-      </td>
-      <td>
-        <img src="https://hiukim.github.io/mind-ar-js-doc/assets/images/basic-demo-fde07aa7567bf213e61b37dbaa192fec.gif" width="300px">
-      </td>
-    </tr>
-    <tr>
-      <td valign="top">
-        <h2>Image Tracking - Multiple Targets Example</h2>
-        <p>Try it yourself: https://hiukim.github.io/mind-ar-js-doc/examples/multi-tracks</p>
-      </td>
-      <td>
-        <img src="https://hiukim.github.io/mind-ar-js-doc/assets/images/multi-targets-demo-8b5fc868f6b0847a9818e8bf0ba2c1c3.gif" width="300px">
-      </td>
-    </tr>
-    <tr>
-      <td valign="top">
-        <h2>Image Tracking - Interactive Example</h2>
-        <p>Demo video: https://youtu.be/gm57gL1NGoQ</p>
-        <p>Try it yourself: https://hiukim.github.io/mind-ar-js-doc/examples/interative</p>
-      </td>
-      <td>
-        <img src="https://hiukim.github.io/mind-ar-js-doc/assets/images/interactive-demo-1ab348a381cbd808f4d52c8750524d11.gif" width="300px"/>
-      </td>
-    </tr>
-    <tr>
-      <td valign="top">
-        <h2>Face Tracking - Virtual Try-On Example</h2>
-        <p>Try it yourself: https://hiukim.github.io/mind-ar-js-doc/face-tracking-examples/tryon</p>
-      </td>
-      <td>
-        <img src="https://hiukim.github.io/mind-ar-js-doc/assets/images/face-tryon-demo-369c4ba701f1df2099ecf05c27f0c944.gif"  width="300px"/>
-      </td>
-    </tr>
-    <tr>
-      <td valign="top">
-        <h2>Face Tracking - Face Mesh Effect</h2>
-        <p>Try it yourself: https://hiukim.github.io/mind-ar-js-doc/more-examples/threejs-face-facemesh</p>
-      </td>
-      <td>
-        <img src="https://hiukim.github.io/mind-ar-js-doc/assets/images/face-mesh-demo-8f5bd8d1bcbffbdb76896b58171ecc8a.gif"  width="300px"/>
-      </td>
-    </tr>
-  </tbody>
-</table>
+### Face Tracking
+- Real-time face mesh detection and tracking
+- Face landmark detection (468 points)
+- Blend shapes support for facial expressions
+- Virtual try-on capabilities (glasses, hats, masks, etc.)
+- Face occlusion support
 
-### More examples
+### Technical Features
+- **GPU Acceleration**: Leverages WebGL through TensorFlow.js for high-performance computer vision
+- **Web Workers**: Background processing to maintain smooth UI
+- **ES Modules**: Modern JavaScript module system support
+- **TypeScript Compatible**: Can be used with TypeScript projects
+- **Custom Shaders**: Optimized GLSL shaders for image processing
+- **Responsive Design**: Automatically adapts to different screen sizes and orientations
 
-More examples can be found here: https://hiukim.github.io/mind-ar-js-doc/examples/summary
+## Installation
 
+### NPM Installation
 
-# Quick Start
-Learn how to build the Basic example above in 5 minutes with a plain text editor! 
-
-Quick Start Guide: https://hiukim.github.io/mind-ar-js-doc/quick-start/overview
-
-To give you a quick idea, this is the complete source code for the Basic example. It's static HTML page, you can host it anywhere.
-
-```
-<html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/dist/mindar-image.prod.js"></script>
-    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/dist/mindar-image-aframe.prod.js"></script>
-  </head>
-  <body>
-    <a-scene mindar-image="imageTargetSrc: https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/examples/image-tracking/assets/card-example/card.mind;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
-      <a-assets>
-        <img id="card" src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/examples/image-tracking/assets/card-example/card.png" />
-        <a-asset-item id="avatarModel" src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/examples/image-tracking/assets/card-example/softmind/scene.gltf"></a-asset-item>
-      </a-assets>
-
-      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-      <a-entity mindar-image-target="targetIndex: 0">
-        <a-plane src="#card" position="0 0 0" height="0.552" width="1" rotation="0 0 0"></a-plane>
-        <a-gltf-model rotation="0 0 0 " position="0 0 0.1" scale="0.005 0.005 0.005" src="#avatarModel" animation="property: position; to: 0 0.1 0.1; dur: 1000; easing: easeInOutQuad; loop: true; dir: alternate">
-      </a-entity>
-    </a-scene>
-  </body>
-</html>
+```bash
+npm install mind-ar
 ```
 
-# Target Images Compiler
-You can compile your own target images right on the browser using this friendly Compiler tools. If you don't know what it is, go through the Quick Start guide 
+### CDN Usage
 
-https://hiukim.github.io/mind-ar-js-doc/tools/compile
+For quick prototyping, you can use the CDN version:
 
-<img src="https://hiukim.github.io/mind-ar-js-doc/assets/images/step2-9f3c4dcb8a2e60766d86f950d06929ea.png" width="300"/>
+```html
+<!-- Image Tracking -->
+<script type="module">
+  import { MindARThree } from 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js';
+  // Your code here
+</script>
 
-# Roadmaps
-1. Supports more augmented reality features, like Hand Tracking, Body Tracking and Plane Tracking
+<!-- Face Tracking -->
+<script type="module">
+  import { MindARThree } from 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-three.prod.js';
+  // Your code here
+</script>
+```
 
-2. Research on different state-of-the-arts algorithms to improve tracking accuracy and performance
+### Peer Dependencies
 
-3. More educational references.
+MindAR requires Three.js as a peer dependency:
 
-# Contributions
-I personally don't come from a strong computer vision background, and I'm having a hard time improving the tracking accuracy. I could really use some help from computer vision expert. Please reach out and discuss.
+```bash
+npm install three
+```
 
-Also welcome javascript experts to help with the non-engine part, like improving the APIs and so.
+## Quick Start
 
-If you are graphics designer or 3D artists and can contribute to the visual. Even if you just use MindAR to develop some cool applications, please show us!
+### Image Tracking with Three.js
 
-Whatever you can think of. It's an opensource web AR framework for everyone!
+```javascript
+import { MindARThree } from 'mind-ar/dist/mindar-image-three.prod.js';
+import * as THREE from 'three';
 
-# Development Guide
+const mindarThree = new MindARThree({
+  container: document.body,
+  imageTargetSrc: './assets/card.mind'
+});
 
-#### Directories explained
+const { renderer, scene, camera } = mindarThree;
 
-1. `/src` folder contains majority of the source code
-2. `/examples` folder contains examples to test out during development
+// Add your 3D objects
+const geometry = new THREE.BoxGeometry(1, 1, 1);
+const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const cube = new THREE.Mesh(geometry, material);
 
-#### To create a production build
+const anchor = mindarThree.addAnchor(0);
+anchor.group.add(cube);
 
-run `> npm run build`. the build will be generated in `dist` folder
+// Start AR
+await mindarThree.start();
+renderer.setAnimationLoop(() => {
+  renderer.render(scene, camera);
+});
+```
 
-#### For development
+### Face Tracking with Three.js
 
-To develop threeJS version, run `> npm run watch`. This will observe the file changes in `src` folder and continuously build the artefacts in `dist-dev`.
+```javascript
+import { MindARThree } from 'mind-ar/dist/mindar-face-three.prod.js';
+import * as THREE from 'three';
 
-To develop AFRAME version, you will need to run `>npm run build-dev` everytime you make changes. The `--watch` parameter currently failed to automatically generate `mindar-XXX-aframe.js`. 
+const mindarThree = new MindARThree({
+  container: document.body
+});
 
-All the examples in the `examples` folder is configured to use this development build, so you can open those examples in browser to start debugging or development.
+const { renderer, scene, camera } = mindarThree;
 
-The examples should run in desktop browser and they are just html files, so it's easy to start development. However, because it requires camera access, so you need a webcam. Also, you need to run the html file with some localhost web server. Simply opening the files won't work.
+// Add 3D object to face
+const geometry = new THREE.BoxGeometry(0.06, 0.06, 0.06);
+const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const cube = new THREE.Mesh(geometry, material);
 
-For example, you can install this chrome plugin to start a local server: `https://chrome.google.com/webstore/detail/web-server-for-chrome/ofhbbkphhbklhfoeikjpcbhemlocgigb?hl=en`
+const anchor = mindarThree.addAnchor(0);
+anchor.group.add(cube);
 
-You most likely would want to test on mobile device as well. In that case, it's better if you could setup your development environment to be able to share your localhost webserver to your mobile devices. If you have difficulties doing that, perhaps behind a firewall, then you could use something like `ngrok` (https://ngrok.com/) to tunnel the request. But this is not an ideal solution, because the development build of MindAR is not small (>10Mb), and tunneling with free version of `ngrok` could be slow.
+await mindarThree.start();
+renderer.setAnimationLoop(() => {
+  renderer.render(scene, camera);
+});
+```
 
-#### webgl backend
-This library utilize tensorflowjs (https://github.com/tensorflow/tfjs) for webgl backend. Yes, tensorflow is a machine learning library, but we didn't use it for machine learning! :) Tensorflowjs has a very solid webgl engine which allows us to write general purpose GPU application (in this case, our AR application). 
+## Documentation
 
-The core detection and tracking algorithm is written with custom operations in tensorflowjs. They are like shaders program. It might looks intimidating at first, but it's actually not that difficult to understand.
+Comprehensive documentation is available at: **[https://hiukim.github.io/mind-ar-js-doc](https://hiukim.github.io/mind-ar-js-doc)**
 
-# Credits
-The computer vision idea is borrowed from artoolkit (i.e. https://github.com/artoolkitx/artoolkit5). Unfortunately, the library doesn't seems to be maintained anymore.
+The documentation includes:
+- Detailed API reference
+- Step-by-step tutorials
+- Advanced usage patterns
+- Performance optimization guides
+- Troubleshooting tips
 
-Face Tracking is based on mediapipe face mesh model (i.e. https://google.github.io/mediapipe/solutions/face_mesh.html)
+## API Reference
 
+### MindARThree (Image Tracking)
+
+#### Constructor Options
+
+```javascript
+const mindarThree = new MindARThree({
+  container: HTMLElement,           // Required: Container element
+  imageTargetSrc: string,            // Required: Path to .mind file
+  maxTrack: number,                  // Optional: Max number of targets (default: 1)
+  uiLoading: string,                 // Optional: "yes" | "no" (default: "yes")
+  uiScanning: string,                 // Optional: "yes" | "no" (default: "yes")
+  uiError: string,                   // Optional: "yes" | "no" (default: "yes")
+  filterMinCF: number,               // Optional: Filter cutoff frequency
+  filterBeta: number,                // Optional: Filter beta value
+  warmupTolerance: number,            // Optional: Warmup tolerance
+  missTolerance: number,              // Optional: Miss tolerance
+  userDeviceId: string,              // Optional: Specific user-facing camera ID
+  environmentDeviceId: string        // Optional: Specific environment-facing camera ID
+});
+```
+
+#### Methods
+
+- `start()`: Start the AR session
+- `stop()`: Stop the AR session
+- `switchCamera()`: Switch between front and back cameras
+- `addAnchor(targetIndex)`: Add a 3D anchor to a target
+- `addCSSAnchor(targetIndex)`: Add a CSS3D anchor to a target
+
+#### Anchor Object
+
+```javascript
+const anchor = mindarThree.addAnchor(0);
+
+// Properties
+anchor.group          // THREE.Group - Add your 3D objects here
+anchor.targetIndex    // number - Target index
+anchor.visible        // boolean - Whether target is currently visible
+
+// Event handlers
+anchor.onTargetFound  // Function - Called when target is found
+anchor.onTargetLost   // Function - Called when target is lost
+anchor.onTargetUpdate // Function - Called on each frame when target is visible
+```
+
+### MindARThree (Face Tracking)
+
+#### Constructor Options
+
+```javascript
+const mindarThree = new MindARThree({
+  container: HTMLElement,           // Required: Container element
+  uiLoading: string,                 // Optional: "yes" | "no" (default: "yes")
+  uiScanning: string,                // Optional: "yes" | "no" (default: "yes")
+  uiError: string,                   // Optional: "yes" | "no" (default: "yes")
+  filterMinCF: number,              // Optional: Filter cutoff frequency
+  filterBeta: number,                // Optional: Filter beta value
+  userDeviceId: string,              // Optional: Specific camera ID
+  environmentDeviceId: string,       // Optional: Specific camera ID
+  disableFaceMirror: boolean         // Optional: Disable face mirroring (default: false)
+});
+```
+
+#### Methods
+
+- `start()`: Start the AR session
+- `stop()`: Stop the AR session
+- `switchCamera()`: Switch between front and back cameras
+- `addAnchor(index)`: Add a 3D anchor to face (index 0 for face)
+- `addFaceMesh()`: Add a face mesh for occlusion
+
+## Examples
+
+For examples and tutorials, please visit the official documentation:
+
+- 📖 [Documentation Examples](https://hiukim.github.io/mind-ar-js-doc/examples/summary)
+- 🎯 [Image Tracking Examples](https://hiukim.github.io/mind-ar-js-doc/examples/summary)
+- 😊 [Face Tracking Examples](https://hiukim.github.io/mind-ar-js-doc/face-tracking-examples/tryon)
+
+The examples in the documentation include:
+- Basic image tracking
+- Multiple targets tracking
+- Interactive AR experiences
+- Face tracking with virtual try-on
+- Face mesh visualization
+- Blend shapes examples
+- CSS3D integration
+
+**Note**: All examples require HTTPS or localhost due to camera access requirements.
+
+## Architecture
+
+### Core Components
+
+```
+mind-ar-js/
+├── src/
+│   ├── image-target/          # Image tracking implementation
+│   │   ├── controller.js      # Main tracking controller
+│   │   ├── three.js           # Three.js integration
+│   │   ├── detector/          # Feature detection
+│   │   ├── tracker/           # Feature tracking
+│   │   ├── matching/          # Feature matching
+│   │   └── estimation/        # Pose estimation
+│   ├── face-target/           # Face tracking implementation
+│   │   ├── controller.js      # Face tracking controller
+│   │   ├── three.js           # Three.js integration
+│   │   └── face-geometry/     # Face mesh geometry
+│   ├── libs/                  # Third-party libraries
+│   └── ui/                    # UI components
+├── dist/                      # Production builds
+└── dist-dev/                  # Development builds
+```
+
+### Technology Stack
+
+- **TensorFlow.js**: GPU-accelerated computer vision operations
+- **Three.js**: 3D rendering engine
+- **MediaPipe**: Face mesh detection (for face tracking)
+- **WebGL**: GPU acceleration
+- **Web Workers**: Background processing
+
+### Image Tracking Pipeline
+
+1. **Feature Detection**: Extract keypoints from camera frame using FREAK descriptors
+2. **Feature Matching**: Match detected features with pre-compiled target image features
+3. **Pose Estimation**: Calculate 6DOF pose using RANSAC and homography
+4. **Tracking**: Track features across frames for smooth tracking
+5. **Filtering**: Apply One Euro Filter for stable pose output
+6. **Rendering**: Render 3D content using Three.js
+
+### Face Tracking Pipeline
+
+1. **Face Detection**: Detect face using MediaPipe Face Mesh
+2. **Landmark Extraction**: Extract 468 facial landmarks
+3. **Pose Estimation**: Calculate face pose and orientation
+4. **Blend Shapes**: Extract facial expression parameters
+5. **Rendering**: Render 3D content anchored to face
+
+## Development
+
+### Prerequisites
+
+- Node.js >= 14.0.0
+- npm or yarn
+- Modern web browser with WebGL support
+- Webcam for testing
+
+### Setup Development Environment
+
+1. Clone the repository:
+```bash
+git clone https://github.com/hiukim/mind-ar-js.git
+cd mind-ar-js
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+### Build Commands
+
+```bash
+# Development build (watch mode for Three.js)
+npm run watch
+
+# Development build (one-time)
+npm run build-dev
+
+# Production build
+npm run build
+
+# Development server with hot reload
+npm run dev
+```
+
+### Project Structure
+
+- `/src` - Source code
+  - `/image-target` - Image tracking modules
+  - `/face-target` - Face tracking modules
+  - `/libs` - Utility libraries
+  - `/ui` - UI components
+- `/dist` - Production build output
+- `/dist-dev` - Development build output
+- `/testing` - Testing utilities
+
+### Development Workflow
+
+1. **Development**: Use `npm run watch` - automatically rebuilds on file changes
+2. **Testing**: Create your own test HTML files that import from `dist-dev`
+3. **Local Server**: Use a local web server (Chrome Web Server extension, Python's http.server, etc.)
+4. **Production**: Run `npm run build` to create optimized production builds
+
+### Building Custom Target Images
+
+Use the online compiler tool: [https://hiukim.github.io/mind-ar-js-doc/tools/compile](https://hiukim.github.io/mind-ar-js-doc/tools/compile)
+
+## Browser Compatibility
+
+### Supported Browsers
+
+- ✅ Chrome/Edge 90+
+- ✅ Firefox 88+
+- ✅ Safari 14+ (iOS 14+)
+- ✅ Opera 76+
+
+### Required Features
+
+- WebGL 2.0 support
+- Web Workers
+- MediaDevices API (getUserMedia)
+- ES6 Modules
+- Canvas API
+
+### Mobile Considerations
+
+- **iOS**: Requires iOS 14+ and Safari
+- **Android**: Chrome or Firefox recommended
+- **HTTPS Required**: Camera access requires HTTPS (or localhost)
+- **Performance**: Lower-end devices may experience reduced frame rates
+
+## Troubleshooting
+
+### Common Issues
+
+#### Camera Not Accessing
+
+**Problem**: Camera permission denied or not starting
+
+**Solutions**:
+- Ensure you're using HTTPS or localhost
+- Check browser permissions for camera access
+- Try a different browser
+- Verify camera is not being used by another application
+
+#### Poor Tracking Performance
+
+**Problem**: Tracking is jittery or inaccurate
+
+**Solutions**:
+- Ensure good lighting conditions
+- Use high-contrast target images
+- Adjust filter parameters (`filterMinCF`, `filterBeta`)
+- Reduce tracking resolution if on mobile
+- Check browser console for errors
+
+#### Build Errors
+
+**Problem**: npm install or build fails
+
+**Solutions**:
+- Ensure Node.js >= 14.0.0
+- Clear node_modules and reinstall: `rm -rf node_modules && npm install`
+- On Mac, if node-canvas fails: `brew install pkg-config cairo pango libpng jpeg giflib librsvg pixman`
+
+#### ESBuild Import Issues
+
+**Problem**: require() errors when using esbuild
+
+**Solution**: Import classes directly:
+```javascript
+import { MindARThree } from 'mind-ar/src/image-target/three.js'
+```
+Use `esbuild-plugin-inline-worker` for worker support.
+
+### Getting Help
+
+- 📖 [Documentation](https://hiukim.github.io/mind-ar-js-doc)
+- 💬 [GitHub Issues](https://github.com/hiukim/mind-ar-js/issues)
+
+## Contributing
+
+MindAR is an open-source project and welcomes contributions! We're particularly looking for help in:
+
+- 🎯 **Computer Vision**: Improving tracking accuracy and performance
+- 💻 **JavaScript**: API improvements and code quality
+- 🎨 **3D Graphics**: Visual examples and demos
+- 📚 **Documentation**: Tutorials and guides
+- 🐛 **Bug Fixes**: Identifying and fixing issues
+
+### How to Contribute
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Development Guidelines
+
+- Follow existing code style
+- Add comments for complex logic
+- Test on multiple browsers
+- Update documentation as needed
+- Write clear commit messages
+
+## License
+
+MindAR is licensed under the MIT License. See [LICENSE](LICENSE) file for details.
+
+## Credits
+
+### Core Technologies
+
+- **ARToolkit**: Computer vision algorithms inspiration
+- **MediaPipe**: Face mesh detection model
+- **TensorFlow.js**: WebGL backend for GPU acceleration
+- **Three.js**: 3D rendering engine
+
+### Special Thanks
+
+- All contributors and the open-source community
+- Users who provide feedback and report issues
+
+## Related Projects
+
+- **[MindAR Studio](https://studio.mindar.org)** - No-code face tracking AR editor
+- **[Pictarize](https://pictarize.com)** - Hosted platform for image tracking AR
+- **[Unity WebAR Foundation](https://github.com/hiukim/unity-webar-foundation)** - Unity plugin for WebAR
+- **[WebAR Development Course](https://www.udemy.com/course/introduction-to-web-ar-development/)** - Comprehensive WebAR course
+
+## Roadmap
+
+Future features under consideration:
+
+- 🤚 Hand tracking
+- 👤 Body tracking
+- 🏢 Plane detection
+- 📐 Improved tracking accuracy
+- ⚡ Performance optimizations
+- 📱 Enhanced mobile support
+
+---
+
+<div align="center">
+
+**Made with ❤️ by the MindAR community**
+
+[Documentation](https://hiukim.github.io/mind-ar-js-doc) • [Examples](https://hiukim.github.io/mind-ar-js-doc/examples/summary) • [GitHub](https://github.com/hiukim/mind-ar-js) • [Issues](https://github.com/hiukim/mind-ar-js/issues)
+
+</div>

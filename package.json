@@ -19,12 +19,12 @@
   },
   "keywords": [
     "web AR",
-    "aframe",
     "web augmented reality",
     "image tracking",
     "face tracking",
     "tensorflowjs",
-    "mediapipe"
+    "mediapipe",
+    "three.js"
   ],
   "author": "hiukim",
   "license": "MIT",

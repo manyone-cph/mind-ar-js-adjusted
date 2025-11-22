@@ -1,0 +1,172 @@
+import * as tf from '@tensorflow/tfjs';
+import { VideoManager } from "./video-manager.js";
+import { RendererSetup } from "./renderer-setup.js";
+import { AnchorManager } from "./anchor-manager.js";
+import { MatrixUpdater } from "./matrix-updater.js";
+import { ResizeHandler } from "./resize-handler.js";
+import { ARSession } from "./ar-session.js";
+import { UI } from "../../ui/ui.js";
+
+export class MindARThree {
+  constructor({
+    container,
+    imageTargetSrc,
+    maxTrack,
+    uiLoading = "yes",
+    uiScanning = "yes",
+    uiError = "yes",
+    filterMinCF = null,
+    filterBeta = null,
+    warmupTolerance = null,
+    missTolerance = null,
+    userDeviceId = null,
+    environmentDeviceId = null
+  }) {
+    this.container = container;
+    this.imageTargetSrc = imageTargetSrc;
+    this.maxTrack = maxTrack;
+    this.filterMinCF = filterMinCF;
+    this.filterBeta = filterBeta;
+    this.warmupTolerance = warmupTolerance;
+    this.missTolerance = missTolerance;
+    this.userDeviceId = userDeviceId;
+    this.environmentDeviceId = environmentDeviceId;
+
+    this.shouldFaceUser = false;
+
+    // Initialize UI
+    this.ui = new UI({ uiLoading, uiScanning, uiError });
+
+    // Initialize renderer setup
+    this.rendererSetup = new RendererSetup(container);
+    this.scene = this.rendererSetup.getScene();
+    this.cssScene = this.rendererSetup.getCSSScene();
+    this.renderer = this.rendererSetup.getRenderer();
+    this.cssRenderer = this.rendererSetup.getCSSRenderer();
+    this.camera = this.rendererSetup.getCamera();
+
+    // Initialize anchor manager
+    this.anchorManager = new AnchorManager(this.scene, this.cssScene);
+
+    // Initialize video manager
+    this.videoManager = new VideoManager(
+      container,
+      this.ui,
+      this.shouldFaceUser,
+      this.userDeviceId,
+      this.environmentDeviceId
+    );
+
+    // Will be initialized after AR session starts
+    this.matrixUpdater = null;
+    this.resizeHandler = null;
+    this.arSession = null;
+    this.postMatrixs = [];
+
+    window.addEventListener('resize', this.resize.bind(this));
+  }
+
+  async start() {
+    this.ui.showLoading();
+    await this.videoManager.start();
+    await this._startAR();
+  }
+
+  stop() {
+    if (this.arSession) {
+      this.arSession.stop();
+    }
+    this.videoManager.stop();
+  }
+
+  switchCamera() {
+    this.shouldFaceUser = !this.shouldFaceUser;
+    this.videoManager.switchCamera();
+    this.stop();
+    this.start();
+  }
+
+  addAnchor(targetIndex) {
+    return this.anchorManager.addAnchor(targetIndex);
+  }
+
+  addCSSAnchor(targetIndex) {
+    return this.anchorManager.addCSSAnchor(targetIndex);
+  }
+
+  resize() {
+    if (this.resizeHandler) {
+      this.resizeHandler.resize();
+    }
+  }
+
+  async _startAR() {
+    const video = this.videoManager.getVideo();
+
+    // Initialize matrix updater
+    this.matrixUpdater = new MatrixUpdater(
+      this.anchorManager.getAnchors(),
+      this.postMatrixs
+    );
+
+    // Initialize resize handler
+    this.resizeHandler = new ResizeHandler(
+      this.renderer,
+      this.cssRenderer,
+      this.camera,
+      this.container,
+      video,
+      null // Will be set after controller is created
+    );
+
+    // Create AR session
+    this.arSession = new ARSession(
+      video,
+      this.imageTargetSrc,
+      {
+        filterMinCF: this.filterMinCF,
+        filterBeta: this.filterBeta,
+        warmupTolerance: this.warmupTolerance,
+        missTolerance: this.missTolerance,
+        maxTrack: this.maxTrack,
+        onUpdate: (data) => {
+          if (data.type === 'updateMatrix') {
+            const { targetIndex, worldMatrix } = data;
+            this.matrixUpdater.updateMatrix(targetIndex, worldMatrix);
+
+            if (this.matrixUpdater.hasAnyVisible()) {
+              this.ui.hideScanning();
+            } else {
+              this.ui.showScanning();
+            }
+          }
+        }
+      },
+      (postMatrixs) => {
+        this.postMatrixs = postMatrixs;
+        this.matrixUpdater.postMatrixs = postMatrixs;
+      }
+    );
+
+    // Update resize handler with controller reference
+    await this.arSession.start();
+    this.resizeHandler.controller = this.arSession.getController();
+
+    this.resize();
+
+    this.ui.hideLoading();
+    this.ui.showScanning();
+  }
+}
+
+// Window global setup
+if (!window.MINDAR) {
+  window.MINDAR = {};
+}
+if (!window.MINDAR.IMAGE) {
+  window.MINDAR.IMAGE = {};
+}
+
+window.MINDAR.IMAGE.MindARThree = MindARThree;
+window.MINDAR.IMAGE.tf = tf;
+
