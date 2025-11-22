@@ -1,12 +1,14 @@
 import { UI } from "../../ui/ui.js";
+import { getResolutionConstraints } from "../../libs/resolution-utils.js";
 
 export class VideoManager {
-  constructor(container, ui, shouldFaceUser, userDeviceId, environmentDeviceId) {
+  constructor(container, ui, shouldFaceUser, userDeviceId, environmentDeviceId, resolution = null) {
     this.container = container;
     this.ui = ui;
     this.shouldFaceUser = shouldFaceUser;
     this.userDeviceId = userDeviceId;
     this.environmentDeviceId = environmentDeviceId;
+    this.resolution = resolution;
     this.video = null;
   }
 
@@ -48,6 +50,15 @@ export class VideoManager {
         }
       }
 
+      // Add resolution constraints if specified
+      const resolutionConstraints = getResolutionConstraints(this.resolution);
+      if (resolutionConstraints) {
+        // Merge resolution constraints into video constraints
+        // Using 'ideal' allows the browser to adapt to portrait/landscape orientation
+        constraints.video.width = resolutionConstraints.width;
+        constraints.video.height = resolutionConstraints.height;
+      }
+
       navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
         this.video.addEventListener('loadedmetadata', () => {
           this.video.setAttribute('width', this.video.videoWidth);
@@ -77,6 +88,10 @@ export class VideoManager {
 
   switchCamera() {
     this.shouldFaceUser = !this.shouldFaceUser;
+  }
+
+  setResolution(resolution) {
+    this.resolution = resolution;
   }
 
   getVideo() {

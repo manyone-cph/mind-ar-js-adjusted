@@ -110,7 +110,8 @@ import * as THREE from 'three';
 
 const mindarThree = new MindARThree({
   container: document.body,
-  imageTargetSrc: './assets/card.mind'
+  imageTargetSrc: './assets/card.mind',
+  resolution: '720p'  // Optional: Set camera resolution
 });
 
 const { renderer, scene, camera } = mindarThree;
@@ -137,7 +138,8 @@ import { MindARThree } from 'mind-ar/dist/mindar-face-three.prod.js';
 import * as THREE from 'three';
 
 const mindarThree = new MindARThree({
-  container: document.body
+  container: document.body,
+  resolution: '720p'  // Optional: Set camera resolution
 });
 
 const { renderer, scene, camera } = mindarThree;
@@ -186,8 +188,30 @@ const mindarThree = new MindARThree({
   warmupTolerance: number,            // Optional: Warmup tolerance
   missTolerance: number,              // Optional: Miss tolerance
   userDeviceId: string,              // Optional: Specific user-facing camera ID
-  environmentDeviceId: string        // Optional: Specific environment-facing camera ID
+  environmentDeviceId: string,       // Optional: Specific environment-facing camera ID
+  resolution: string                  // Optional: Camera resolution (e.g., "360p", "720p", "1080p")
 });
+```
+
+**Resolution Parameter**: The `resolution` parameter allows you to specify the desired camera resolution using standard video resolution strings. Supported formats include:
+- `"144p"`, `"240p"`, `"360p"`, `"480p"`, `"720p"`, `"1080p"`, `"1440p"`, `"2160p"` (4K)
+- Numeric formats like `"720"` or `"720p"` are also accepted
+- The browser will automatically adapt to the closest available resolution
+- Works seamlessly in both landscape and portrait orientations
+- If not specified, the browser's default camera resolution will be used
+
+**Example**:
+```javascript
+const mindarThree = new MindARThree({
+  container: document.body,
+  imageTargetSrc: './targets.mind',
+  resolution: '720p'  // Request 720p resolution
+});
+
+// Change resolution at runtime
+await mindarThree.setResolution('1080p');  // Switch to 1080p
+// The AR session will automatically restart with the new resolution
+// All anchors and 3D objects are preserved during the restart
 ```
 
 #### Methods
@@ -195,6 +219,7 @@ const mindarThree = new MindARThree({
 - `start()`: Start the AR session
 - `stop()`: Stop the AR session
 - `switchCamera()`: Switch between front and back cameras
+- `setResolution(resolution)`: Change camera resolution at runtime (e.g., `"360p"`, `"720p"`, `"1080p"`)
 - `addAnchor(targetIndex)`: Add a 3D anchor to a target
 - `addCSSAnchor(targetIndex)`: Add a CSS3D anchor to a target
 
@@ -228,8 +253,29 @@ const mindarThree = new MindARThree({
   filterBeta: number,                // Optional: Filter beta value
   userDeviceId: string,              // Optional: Specific camera ID
   environmentDeviceId: string,       // Optional: Specific camera ID
-  disableFaceMirror: boolean         // Optional: Disable face mirroring (default: false)
+  disableFaceMirror: boolean,        // Optional: Disable face mirroring (default: false)
+  resolution: string                 // Optional: Camera resolution (e.g., "360p", "720p", "1080p")
 });
+```
+
+**Resolution Parameter**: The `resolution` parameter allows you to specify the desired camera resolution using standard video resolution strings. Supported formats include:
+- `"144p"`, `"240p"`, `"360p"`, `"480p"`, `"720p"`, `"1080p"`, `"1440p"`, `"2160p"` (4K)
+- Numeric formats like `"720"` or `"720p"` are also accepted
+- The browser will automatically adapt to the closest available resolution
+- Works seamlessly in both landscape and portrait orientations
+- If not specified, the browser's default camera resolution will be used
+
+**Example**:
+```javascript
+const mindarThree = new MindARThree({
+  container: document.body,
+  resolution: '720p'  // Request 720p resolution
+});
+
+// Change resolution at runtime
+await mindarThree.setResolution('1080p');  // Switch to 1080p
+// The AR session will automatically restart with the new resolution
+// All anchors, face meshes, and 3D objects are preserved during the restart
 ```
 
 #### Methods
@@ -237,6 +283,7 @@ const mindarThree = new MindARThree({
 - `start()`: Start the AR session
 - `stop()`: Stop the AR session
 - `switchCamera()`: Switch between front and back cameras
+- `setResolution(resolution)`: Change camera resolution at runtime (e.g., `"360p"`, `"720p"`, `"1080p"`)
 - `addAnchor(index)`: Add a 3D anchor to face (index 0 for face)
 - `addFaceMesh()`: Add a face mesh for occlusion
 

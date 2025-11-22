@@ -20,6 +20,7 @@ export class MindARThree {
     userDeviceId = null,
     environmentDeviceId = null,
     disableFaceMirror = false,
+    resolution = null
   }) {
     this.container = container;
     this.filterMinCF = filterMinCF;
@@ -27,6 +28,7 @@ export class MindARThree {
     this.userDeviceId = userDeviceId;
     this.environmentDeviceId = environmentDeviceId;
     this.disableFaceMirror = disableFaceMirror;
+    this.resolution = resolution;
 
     this.shouldFaceUser = true;
 
@@ -61,7 +63,8 @@ export class MindARThree {
       this.ui,
       this.shouldFaceUser,
       this.userDeviceId,
-      this.environmentDeviceId
+      this.environmentDeviceId,
+      this.resolution
     );
 
     await this.videoManager.start();
@@ -85,6 +88,114 @@ export class MindARThree {
     }
     this.stop();
     this.start();
+  }
+
+  async setResolution(resolution) {
+    // Validate resolution format
+    if (resolution !== null && typeof resolution !== 'string') {
+      throw new Error('Resolution must be a string (e.g., "360p", "720p") or null');
+    }
+
+    // If resolution hasn't changed, do nothing
+    if (this.resolution === resolution) {
+      return;
+    }
+
+    // Store current state
+    const wasRunning = this.arSession !== null;
+    
+    // Preserve anchors and face meshes if running
+    let preservedAnchors = [];
+    let preservedCSSAnchors = [];
+    let preservedFaceMeshes = [];
+    
+    if (wasRunning && this.anchorManager) {
+      // Store anchor metadata (landmarkIndex and css flag)
+      const anchors = this.anchorManager.getAnchors();
+      preservedAnchors = anchors
+        .filter(anchor => !anchor.css)
+        .map(anchor => ({
+          landmarkIndex: anchor.landmarkIndex,
+          group: anchor.group  // Preserve the group with user's 3D objects
+        }));
+      
+      preservedCSSAnchors = anchors
+        .filter(anchor => anchor.css)
+        .map(anchor => ({
+          landmarkIndex: anchor.landmarkIndex,
+          group: anchor.group  // Preserve the group with user's 3D objects
+        }));
+      
+      // Store face mesh references (they'll need to be recreated with new controller)
+      const faceMeshes = this.anchorManager.getFaceMeshes();
+      preservedFaceMeshes = faceMeshes.map(mesh => ({
+        visible: mesh.visible,
+        material: mesh.material.clone()  // Clone material to preserve settings
+      }));
+    }
+
+    // Stop current session if running
+    if (wasRunning) {
+      this.ui.showLoading();
+      this.stop();
+    }
+
+    // Update resolution
+    this.resolution = resolution;
+    if (this.videoManager) {
+      this.videoManager.setResolution(resolution);
+    }
+
+    // Restart if it was running
+    if (wasRunning) {
+      await this.start();
+      
+      // Restore anchors and face meshes
+      if (this.anchorManager) {
+        // Re-add anchors (this will create new anchor entries, but we'll attach to existing groups)
+        // Actually, since groups are already in the scene, we need to be careful
+        // The new anchorManager will create new groups, so we need to either:
+        // 1. Remove old groups and recreate, or
+        // 2. Reuse old groups
+        
+        // Remove old groups from scene and recreate anchors with new anchorManager
+        // Preserve user's 3D objects by moving them to new groups
+        preservedAnchors.forEach(preserved => {
+          // Collect all children before removing the group
+          const children = [];
+          while (preserved.group.children.length > 0) {
+            children.push(preserved.group.children[0]);
+          }
+          this.scene.remove(preserved.group);
+          
+          // Create new anchor with new group
+          const newAnchor = this.anchorManager.addAnchor(preserved.landmarkIndex);
+          // Move all children to new group
+          children.forEach(child => newAnchor.group.add(child));
+        });
+        
+        preservedCSSAnchors.forEach(preserved => {
+          // Collect all children before removing the group
+          const children = [];
+          while (preserved.group.children.length > 0) {
+            children.push(preserved.group.children[0]);
+          }
+          this.cssScene.remove(preserved.group);
+          
+          // Create new anchor with new group
+          const newAnchor = this.anchorManager.addCSSAnchor(preserved.landmarkIndex);
+          // Move all children to new group
+          children.forEach(child => newAnchor.group.add(child));
+        });
+        
+        // Recreate face meshes
+        preservedFaceMeshes.forEach(preserved => {
+          const newFaceMesh = this.anchorManager.addFaceMesh();
+          newFaceMesh.visible = preserved.visible;
+          newFaceMesh.material = preserved.material;
+        });
+      }
+    }
   }
 
   addAnchor(landmarkIndex) {

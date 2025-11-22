@@ -20,7 +20,8 @@ export class MindARThree {
     warmupTolerance = null,
     missTolerance = null,
     userDeviceId = null,
-    environmentDeviceId = null
+    environmentDeviceId = null,
+    resolution = null
   }) {
     this.container = container;
     this.imageTargetSrc = imageTargetSrc;
@@ -31,6 +32,7 @@ export class MindARThree {
     this.missTolerance = missTolerance;
     this.userDeviceId = userDeviceId;
     this.environmentDeviceId = environmentDeviceId;
+    this.resolution = resolution;
 
     this.shouldFaceUser = false;
 
@@ -54,7 +56,8 @@ export class MindARThree {
       this.ui,
       this.shouldFaceUser,
       this.userDeviceId,
-      this.environmentDeviceId
+      this.environmentDeviceId,
+      this.resolution
     );
 
     // Will be initialized after AR session starts
@@ -84,6 +87,38 @@ export class MindARThree {
     this.videoManager.switchCamera();
     this.stop();
     this.start();
+  }
+
+  async setResolution(resolution) {
+    // Validate resolution format
+    if (resolution !== null && typeof resolution !== 'string') {
+      throw new Error('Resolution must be a string (e.g., "360p", "720p") or null');
+    }
+
+    // If resolution hasn't changed, do nothing
+    if (this.resolution === resolution) {
+      return;
+    }
+
+    // Store current state
+    const wasRunning = this.arSession !== null;
+
+    // Stop current session if running
+    if (wasRunning) {
+      this.ui.showLoading();
+      this.stop();
+    }
+
+    // Update resolution
+    this.resolution = resolution;
+    this.videoManager.setResolution(resolution);
+
+    // Restart if it was running
+    // Note: anchorManager persists across restarts (created in constructor),
+    // so anchors and their 3D objects are automatically preserved
+    if (wasRunning) {
+      await this.start();
+    }
   }
 
   addAnchor(targetIndex) {
