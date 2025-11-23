@@ -23,7 +23,7 @@ const ORIENTATION_GAUSSIAN_EXPANSION_FACTOR = 3.0;
 const ORIENTATION_REGION_EXPANSION_FACTOR = 1.5;
 const FREAK_EXPANSION_FACTOR = 7.0;
 
-const FREAK_CONPARISON_COUNT = (FREAKPOINTS.length - 1) * (FREAKPOINTS.length) / 2; // 666
+const FREAK_COMPARISON_COUNT = (FREAKPOINTS.length - 1) * (FREAKPOINTS.length) / 2; // 666
 
 class Detector {
 	constructor(width, height, debugMode = false) {
@@ -282,7 +282,7 @@ class Detector {
 
 		// encode 8 bits into one number
 		// trying to encode 16 bits give wrong result in iOS. may integer precision issue
-		const descriptorCount = Math.ceil(FREAK_CONPARISON_COUNT / 8);
+		const descriptorCount = Math.ceil(FREAK_COMPARISON_COUNT / 8);
 		/*
 		if (!this.kernelCaches.computeFreakDescriptors) {
 			const kernel = {
@@ -296,7 +296,7 @@ class Detector {
 
 		int sum = 0;
 		for (int i = 0; i < 8; i++) {
-		  if (descIndex + i >= ${FREAK_CONPARISON_COUNT}) {
+		  if (descIndex + i >= ${FREAK_COMPARISON_COUNT}) {
 		continue;
 		  }
 

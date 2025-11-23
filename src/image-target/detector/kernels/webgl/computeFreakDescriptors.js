@@ -1,8 +1,8 @@
 
 import { FREAKPOINTS } from '../../freak.js';
 
-const FREAK_CONPARISON_COUNT = (FREAKPOINTS.length - 1) * (FREAKPOINTS.length) / 2;
-const descriptorCount = Math.ceil(FREAK_CONPARISON_COUNT / 8);
+const FREAK_COMPARISON_COUNT = (FREAKPOINTS.length - 1) * (FREAKPOINTS.length) / 2;
+const descriptorCount = Math.ceil(FREAK_COMPARISON_COUNT / 8);
 
 const cache={};
 function GetProgram(extremaFreaks){
@@ -19,7 +19,7 @@ function GetProgram(extremaFreaks){
 
     int sum = 0;
     for (int i = 0; i < 8; i++) {
-      if (descIndex + i >= ${FREAK_CONPARISON_COUNT}) {
+      if (descIndex + i >= ${FREAK_COMPARISON_COUNT}) {
         continue;
       }
 

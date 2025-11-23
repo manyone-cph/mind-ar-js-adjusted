@@ -1,5 +1,5 @@
 import * as tf from '@tensorflow/tfjs';
-import {buildModelViewProjectionTransform, computeScreenCoordiate} from '../estimation/utils.js';
+import {buildModelViewProjectionTransform, computeScreenCoordinate} from '../math/matrix-transform.js';
 
 const AR2_DEFAULT_TS = 6;
 const AR2_DEFAULT_TS_GAP = 1;
@@ -143,7 +143,7 @@ class Tracker {
     for (let i = 0; i < matchingPoints.length; i++) {
       if (sim[i] > AR2_SIM_THRESH && i < trackingFrame.points.length) {
 	goodTrack.push(i);
-	const point = computeScreenCoordiate(modelViewProjectionTransform, matchingPoints[i][0], matchingPoints[i][1]);
+	const point = computeScreenCoordinate(modelViewProjectionTransform, matchingPoints[i][0], matchingPoints[i][1]);
 	screenCoords.push(point);
 	worldCoords.push({x: trackingFrame.points[i].x / trackingFrame.scale, y: trackingFrame.points[i].y / trackingFrame.scale, z: 0});
       }

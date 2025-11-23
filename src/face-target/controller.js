@@ -4,19 +4,21 @@ import {Estimator} from "./face-geometry/estimator.js";
 import {createThreeFaceGeometry as  _createThreeFaceGeometry} from "./face-geometry/face-geometry.js";
 import {positions as canonicalMetricLandmarks} from "./face-geometry/face-data.js";
 import {OneEuroFilter} from '../libs/one-euro-filter.js';
-
-const DEFAULT_FILTER_CUTOFF = 0.001; // 1Hz. time period in milliseconds
-const DEFAULT_FILTER_BETA = 1;
-const DEFAULT_FILTER_DCUTOFF = 0.001; // 1Hz. derivative cutoff
+import {
+  DEFAULT_FILTER_CUTOFF,
+  DEFAULT_FILTER_DCUTOFF,
+  FACE_DEFAULT_FILTER_BETA
+} from '../libs/shared-config.js';
+import {validateFilterParams} from '../libs/shared-validators.js';
 
 class Controller {
   constructor({onUpdate=null, filterMinCF=null, filterBeta=null, filterDCutOff=null}) {
     this.customFaceGeometries = [];
     this.estimator = null;
     this.lastEstimateResult = null;
-    this.filterMinCF = filterMinCF === null? DEFAULT_FILTER_CUTOFF: filterMinCF;
-    this.filterBeta = filterBeta === null? DEFAULT_FILTER_BETA: filterBeta;
-    this.filterDCutOff = filterDCutOff === null? DEFAULT_FILTER_DCUTOFF: filterDCutOff;
+    this.filterMinCF = filterMinCF === null ? DEFAULT_FILTER_CUTOFF : filterMinCF;
+    this.filterBeta = filterBeta === null ? FACE_DEFAULT_FILTER_BETA : filterBeta;
+    this.filterDCutOff = filterDCutOff === null ? DEFAULT_FILTER_DCUTOFF : filterDCutOff;
     this.onUpdate = onUpdate;
     this.flipFace = false;
 
@@ -141,16 +143,7 @@ class Controller {
   }
 
   setFilterParams({filterMinCF, filterBeta, filterDCutOff}) {
-    // Validate parameters
-    if (filterMinCF !== undefined && (typeof filterMinCF !== 'number' || filterMinCF < 0)) {
-      throw new Error('filterMinCF must be a non-negative number');
-    }
-    if (filterBeta !== undefined && (typeof filterBeta !== 'number' || filterBeta < 0)) {
-      throw new Error('filterBeta must be a non-negative number');
-    }
-    if (filterDCutOff !== undefined && (typeof filterDCutOff !== 'number' || filterDCutOff < 0)) {
-      throw new Error('filterDCutOff must be a non-negative number');
-    }
+    validateFilterParams({filterMinCF, filterBeta, filterDCutOff});
 
     // Update stored values
     if (filterMinCF !== undefined) {

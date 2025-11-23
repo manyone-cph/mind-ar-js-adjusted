@@ -1,6 +1,6 @@
 import * as tf from '@tensorflow/tfjs';
 import {Detector} from './detector.js';
-import {buildModelViewProjectionTransform, computeScreenCoordiate} from '../estimation/utils.js';
+import {buildModelViewProjectionTransform, computeScreenCoordinate} from '../math/matrix-transform.js';
 
 class CropDetector {
   constructor(width, height, debugMode=false) {
