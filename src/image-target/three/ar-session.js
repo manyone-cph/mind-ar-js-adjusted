@@ -28,12 +28,12 @@ export class ARSession {
       missTolerance: this.controllerConfig.missTolerance,
       maxTrack: this.controllerConfig.maxTrack,
       targetFPS: this.controllerConfig.targetFPS,
-      onUpdate: this.controllerConfig.onUpdate
+      onUpdate: this.controllerConfig.onUpdate,
+      onWorkDistributionEnabled: this.controllerConfig.onWorkDistributionEnabled
     });
 
     try {
       const { dimensions: imageTargetDimensions } = await this.controller.addImageTargets(this.imageTargetSrc);
-      this.logger.info('Image targets loaded', { count: imageTargetDimensions.length });
 
     this.postMatrixs = [];
     for (let i = 0; i < imageTargetDimensions.length; i++) {

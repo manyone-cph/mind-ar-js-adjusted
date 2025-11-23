@@ -22,7 +22,8 @@ class FrameProcessor {
     targetFPS,
     markerDimensions,
     getRotatedZ90Matrix,
-    glModelViewMatrix
+    glModelViewMatrix,
+    onWorkDistributionEnabled
   }) {
     this.inputLoader = inputLoader;
     this.cropDetector = cropDetector;
@@ -47,7 +48,8 @@ class FrameProcessor {
     this.workDistributionManager = new WorkDistributionManager({
       detectionSkipInterval: 3, // Skip detection every 3 frames when tracking (less aggressive)
       maxTrackingPerFrame: 1, // Process 1 tracking target per frame when quality is low
-      debugMode: debugMode
+      debugMode: debugMode,
+      onEnabled: (typeof onWorkDistributionEnabled !== 'undefined' ? onWorkDistributionEnabled : null)
     });
     
     this.memoryManager = new MemoryManager({

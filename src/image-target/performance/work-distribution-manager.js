@@ -12,6 +12,7 @@ class WorkDistributionManager {
     this.detectionFrameCounter = 0;
     this.trackingRotationIndex = 0;
     this.isEnabled = false;
+    this.onEnabled = config.onEnabled || null;
 
     this.logger = new Logger('WorkDistributionManager', true, config.debugMode ? 'debug' : 'info');
     this.logger.info('Work distribution manager initialized', {
@@ -33,6 +34,18 @@ class WorkDistributionManager {
           detectionSkipInterval: this.config.detectionSkipInterval,
           maxTrackingPerFrame: this.config.maxTrackingPerFrame
         });
+        // Call onEnabled callback if provided
+        if (this.onEnabled) {
+          try {
+            this.onEnabled({
+              qualityLevel,
+              detectionSkipInterval: this.config.detectionSkipInterval,
+              maxTrackingPerFrame: this.config.maxTrackingPerFrame
+            });
+          } catch (error) {
+            this.logger.error('Error in onEnabled callback', { error });
+          }
+        }
       } else {
         this.logger.info('Work distribution disabled', {
           qualityLevel,

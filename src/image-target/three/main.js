@@ -35,7 +35,8 @@ export class MindARThree {
     postProcessorConfig = null, // null = disabled, {} = enabled with defaults, or custom config object
     visualizerConfig = null, // null = disabled, {} = enabled with defaults, or custom config object
     debug = false, // If true, collect graph data but don't render (for external visualization)
-    onVideoRestart = null // Optional callback called when video element is ready after restart
+    onVideoRestart = null, // Optional callback called when video element is ready after restart
+    onReady = null // Optional callback called when AR system is fully ready
   }) {
     // Required parameters - no fallback
     if (!container) {
@@ -86,6 +87,13 @@ export class MindARThree {
     this.visualizerConfig = visualizerConfig;
     this.debug = debug;
     this.onVideoRestart = onVideoRestart;
+    this.onReady = onReady;
+    
+    // Event listeners map
+    this._eventListeners = new Map();
+    
+    // Track if ready event has been emitted
+    this._readyEmitted = false;
 
     this.shouldFaceUser = false;
 
@@ -644,6 +652,23 @@ export class MindARThree {
               this.ui.showScanning();
             }
           }
+        },
+        onWorkDistributionEnabled: () => {
+          // Emit ready event when work distribution is enabled (only once)
+          if (!this._readyEmitted) {
+            this._readyEmitted = true;
+            this.logger.info('Emitting ready event (work distribution enabled)');
+            this._emit('ready', {
+              controller: this.arSession.getController(),
+              video: this.videoManager.getVideo()
+            });
+            if (this.onReady) {
+              this.onReady({
+                controller: this.arSession.getController(),
+                video: this.videoManager.getVideo()
+              });
+            }
+          }
         }
       },
       (postMatrixs) => {
@@ -660,6 +685,54 @@ export class MindARThree {
 
     this.ui.hideLoading();
     this.ui.showScanning();
+    
+    // Ready event will be emitted when work distribution is enabled
+  }
+  
+  /**
+   * Add event listener
+   * @param {string} event - Event name ('ready', etc.)
+   * @param {Function} callback - Callback function
+   */
+  on(event, callback) {
+    if (!this._eventListeners.has(event)) {
+      this._eventListeners.set(event, []);
+    }
+    this._eventListeners.get(event).push(callback);
+  }
+  
+  /**
+   * Remove event listener
+   * @param {string} event - Event name
+   * @param {Function} callback - Callback function to remove
+   */
+  off(event, callback) {
+    if (!this._eventListeners.has(event)) {
+      return;
+    }
+    const listeners = this._eventListeners.get(event);
+    const index = listeners.indexOf(callback);
+    if (index > -1) {
+      listeners.splice(index, 1);
+    }
+  }
+  
+  /**
+   * Emit event to all listeners
+   * @private
+   */
+  _emit(event, data) {
+    if (!this._eventListeners.has(event)) {
+      return;
+    }
+    const listeners = this._eventListeners.get(event);
+    listeners.forEach(callback => {
+      try {
+        callback(data);
+      } catch (error) {
+        this.logger.error(`Error in event listener for ${event}`, { error });
+      }
+    });
   }
 }
 

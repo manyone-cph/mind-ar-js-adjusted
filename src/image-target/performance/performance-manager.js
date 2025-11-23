@@ -12,7 +12,7 @@ class PerformanceManager {
       ...config
     };
 
-    this.currentQuality = 1.0;
+    this.currentQuality = 0.6;
     this.frameTimes = [];
     this.frameCount = 0;
     this.lastAdaptationFrame = 0;
@@ -125,7 +125,7 @@ class PerformanceManager {
   }
 
   reset() {
-    this.currentQuality = 1.0;
+    this.currentQuality = 0.6;
     this.frameTimes = [];
     this.frameCount = 0;
     this.lastAdaptationFrame = 0;

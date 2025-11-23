@@ -35,7 +35,8 @@ class Controller {
     warmupTolerance = null,
     missTolerance = null,
     filterDCutOff = null,
-    targetFPS = null
+    targetFPS = null,
+    onWorkDistributionEnabled = null
   }) {
     this.inputWidth = inputWidth;
     this.inputHeight = inputHeight;
@@ -46,6 +47,7 @@ class Controller {
     this.targetFPS = targetFPS;
     this.onUpdate = onUpdate;
     this.debugMode = debugMode;
+    this.onWorkDistributionEnabled = onWorkDistributionEnabled;
 
     this.logger = new Logger('Controller', true, debugMode ? 'debug' : 'info');
     this.logger.info('Initializing controller', {
@@ -165,7 +167,8 @@ class Controller {
       markerDimensions: this.markerDimensions,
       getRotatedZ90Matrix,
       glModelViewMatrix: (modelViewTransform, targetHeight) => 
-        glModelViewMatrix(modelViewTransform, targetHeight)
+        glModelViewMatrix(modelViewTransform, targetHeight),
+      onWorkDistributionEnabled: this.onWorkDistributionEnabled || null
     });
 
     this.logger.info('Controller setup complete', { targetCount: dimensions.length });
