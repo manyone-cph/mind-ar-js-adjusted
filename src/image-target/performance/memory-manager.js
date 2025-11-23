@@ -105,13 +105,20 @@ class MemoryManager {
 
   getMemoryStats() {
     const memory = tf.memory();
-    return {
-      numTensors: memory.numTensors,
-      numBytes: memory.numBytes,
-      numBytesInGPU: memory.numBytesInGPU,
-      numBytesInGPUFormatted: (memory.numBytesInGPU / 1024 / 1024).toFixed(2) + ' MB',
-      numBytesFormatted: (memory.numBytes / 1024 / 1024).toFixed(2) + ' MB'
-    };
+    
+    // Reuse cached stats object to avoid allocations
+    if (!this._cachedStats) {
+      this._cachedStats = {};
+    }
+    
+    // Update cached object in place
+    this._cachedStats.numTensors = memory.numTensors;
+    this._cachedStats.numBytes = memory.numBytes;
+    this._cachedStats.numBytesInGPU = memory.numBytesInGPU;
+    this._cachedStats.numBytesInGPUFormatted = (memory.numBytesInGPU / 1024 / 1024).toFixed(2) + ' MB';
+    this._cachedStats.numBytesFormatted = (memory.numBytes / 1024 / 1024).toFixed(2) + ' MB';
+    
+    return this._cachedStats;
   }
 
   forceCleanup() {
@@ -122,6 +129,7 @@ class MemoryManager {
   reset() {
     this.frameCount = 0;
     this.lastCleanupFrame = 0;
+    this._cachedStats = null; // Clear cached stats
   }
 }
 

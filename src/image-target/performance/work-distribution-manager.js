@@ -65,51 +65,96 @@ class WorkDistributionManager {
 
   getTrackingTargetsToProcess(allTrackingStates) {
     if (!this.isEnabled || !this.config.enableDistribution) {
-      // Return all states with their indices
-      return allTrackingStates.map((state, index) => ({ stateIndex: index, state }));
+      // Reuse cached array to avoid allocations
+      if (!this._cachedAllStates) {
+        this._cachedAllStates = [];
+      }
+      // Resize array if needed, reuse objects when possible
+      while (this._cachedAllStates.length < allTrackingStates.length) {
+        this._cachedAllStates.push({ stateIndex: 0, state: null });
+      }
+      this._cachedAllStates.length = allTrackingStates.length;
+      
+      // Update in place to avoid allocations
+      for (let i = 0; i < allTrackingStates.length; i++) {
+        this._cachedAllStates[i].stateIndex = i;
+        this._cachedAllStates[i].state = allTrackingStates[i];
+      }
+      return this._cachedAllStates;
+    }
+
+    // Reuse cached arrays to avoid allocations
+    if (!this._cachedActiveStates) {
+      this._cachedActiveStates = [];
+    }
+    if (!this._cachedTargets) {
+      this._cachedTargets = [];
     }
 
     // Build list of active tracking states with their original indices
-    const activeStatesWithIndices = [];
+    // Reuse objects to avoid allocations
+    if (!this._cachedActiveStateObjects) {
+      this._cachedActiveStateObjects = [];
+    }
+    
+    this._cachedActiveStates.length = 0;
+    let objectIndex = 0;
     for (let i = 0; i < allTrackingStates.length; i++) {
       if (allTrackingStates[i].isTracking) {
-        activeStatesWithIndices.push({
-          stateIndex: i,
-          state: allTrackingStates[i]
-        });
+        // Reuse cached object if available, otherwise create new
+        if (!this._cachedActiveStateObjects[objectIndex]) {
+          this._cachedActiveStateObjects[objectIndex] = { stateIndex: 0, state: null };
+        }
+        this._cachedActiveStateObjects[objectIndex].stateIndex = i;
+        this._cachedActiveStateObjects[objectIndex].state = allTrackingStates[i];
+        this._cachedActiveStates.push(this._cachedActiveStateObjects[objectIndex]);
+        objectIndex++;
       }
     }
 
-    if (activeStatesWithIndices.length === 0) {
-      return [];
+    if (this._cachedActiveStates.length === 0) {
+      this._cachedTargets.length = 0;
+      return this._cachedTargets;
     }
 
     // When quality is low, process only one target per frame, rotating through them
     const maxPerFrame = this.config.maxTrackingPerFrame;
     const startIndex = this.trackingRotationIndex;
-    const targetsToProcess = [];
+    this._cachedTargets.length = 0;
 
-    for (let i = 0; i < activeStatesWithIndices.length && targetsToProcess.length < maxPerFrame; i++) {
-      const index = (startIndex + i) % activeStatesWithIndices.length;
-      targetsToProcess.push(activeStatesWithIndices[index]);
+    for (let i = 0; i < this._cachedActiveStates.length && this._cachedTargets.length < maxPerFrame; i++) {
+      const index = (startIndex + i) % this._cachedActiveStates.length;
+      this._cachedTargets.push(this._cachedActiveStates[index]);
     }
 
     // Rotate for next frame
-    this.trackingRotationIndex = (this.trackingRotationIndex + targetsToProcess.length) % activeStatesWithIndices.length;
+    this.trackingRotationIndex = (this.trackingRotationIndex + this._cachedTargets.length) % this._cachedActiveStates.length;
 
-    this.logger.debug('Tracking targets selected', {
-      totalActive: activeStatesWithIndices.length,
-      processingThisFrame: targetsToProcess.length,
-      rotationIndex: this.trackingRotationIndex,
-      targetIndices: targetsToProcess.map(t => t.stateIndex)
-    });
+    if (this.logger.levelValue >= 3) { // Only if debug level
+      // Only create targetIndices array if actually logging
+      const targetIndices = [];
+      for (let i = 0; i < this._cachedTargets.length; i++) {
+        targetIndices.push(this._cachedTargets[i].stateIndex);
+      }
+      this.logger.debug('Tracking targets selected', {
+        totalActive: this._cachedActiveStates.length,
+        processingThisFrame: this._cachedTargets.length,
+        rotationIndex: this.trackingRotationIndex,
+        targetIndices
+      });
+    }
 
-    return targetsToProcess;
+    return this._cachedTargets;
   }
 
   reset() {
     this.detectionFrameCounter = 0;
     this.trackingRotationIndex = 0;
+    // Clear cached arrays to allow GC
+    this._cachedActiveStates = null;
+    this._cachedTargets = null;
+    this._cachedAllStates = null;
+    this._cachedActiveStateObjects = null;
   }
 
   getStats() {

@@ -66,13 +66,20 @@ class SmartScheduler {
   }
 
   getSkipStats() {
+    // Reuse cached stats object to avoid allocations
+    if (!this._cachedStats) {
+      this._cachedStats = {};
+    }
+    
     const skipRate = this.totalFrames > 0 ? (this.frameSkipCount / this.totalFrames * 100).toFixed(1) : '0.0';
-    return {
-      totalFrames: this.totalFrames,
-      skippedFrames: this.frameSkipCount,
-      skipRate: skipRate + '%',
-      consecutiveSkips: this.consecutiveSkips
-    };
+    
+    // Update cached object in place
+    this._cachedStats.totalFrames = this.totalFrames;
+    this._cachedStats.skippedFrames = this.frameSkipCount;
+    this._cachedStats.skipRate = skipRate + '%';
+    this._cachedStats.consecutiveSkips = this.consecutiveSkips;
+    
+    return this._cachedStats;
   }
 
   reset() {
@@ -81,6 +88,7 @@ class SmartScheduler {
     this.lastFrameTime = 0;
     this.frameSkipCount = 0;
     this.totalFrames = 0;
+    this._cachedStats = null; // Clear cached stats
   }
 }
 

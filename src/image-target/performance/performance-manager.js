@@ -130,24 +130,35 @@ class PerformanceManager {
     this.frameCount = 0;
     this.lastAdaptationFrame = 0;
     this.performanceHistory = [];
+    this._cachedStats = null; // Clear cached stats
   }
 
   getStats() {
     if (this.frameTimes.length === 0) return null;
     
-    const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
-    const maxFrameTime = Math.max(...this.frameTimes);
-    const minFrameTime = Math.min(...this.frameTimes);
+    // Reuse cached stats object to avoid allocations
+    if (!this._cachedStats) {
+      this._cachedStats = {};
+    }
     
-    return {
-      avgFrameTime: avgFrameTime.toFixed(2),
-      maxFrameTime: maxFrameTime.toFixed(2),
-      minFrameTime: minFrameTime.toFixed(2),
-      currentFPS: (1000 / avgFrameTime).toFixed(1),
-      quality: this.currentQuality.toFixed(2),
-      qualityLevel: this.getQualityLevel(),
-      frameCount: this.frameCount
-    };
+    const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+    let maxFrameTime = this.frameTimes[0];
+    let minFrameTime = this.frameTimes[0];
+    for (let i = 1; i < this.frameTimes.length; i++) {
+      if (this.frameTimes[i] > maxFrameTime) maxFrameTime = this.frameTimes[i];
+      if (this.frameTimes[i] < minFrameTime) minFrameTime = this.frameTimes[i];
+    }
+    
+    // Update cached object in place
+    this._cachedStats.avgFrameTime = avgFrameTime.toFixed(2);
+    this._cachedStats.maxFrameTime = maxFrameTime.toFixed(2);
+    this._cachedStats.minFrameTime = minFrameTime.toFixed(2);
+    this._cachedStats.currentFPS = (1000 / avgFrameTime).toFixed(1);
+    this._cachedStats.quality = this.currentQuality.toFixed(2);
+    this._cachedStats.qualityLevel = this.getQualityLevel();
+    this._cachedStats.frameCount = this.frameCount;
+    
+    return this._cachedStats;
   }
 }
 

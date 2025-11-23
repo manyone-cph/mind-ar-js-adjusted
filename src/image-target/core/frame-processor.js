@@ -92,6 +92,13 @@ class FrameProcessor {
     this.hasEverDetected = false; // Track if we've ever successfully detected a target
     this.shouldSkipNextFrame = false; // Flag for adaptive frame skipping
 
+    // Cache callback objects to avoid allocations
+    this._cachedProcessDoneCallback = {type: 'processDone'};
+    this._cachedUpdateMatrixCallbacks = []; // Per-target callback objects
+    this._cachedMatrixArrays = []; // Per-target matrix arrays for slice operations
+    this._cachedRotatedMatrices = []; // Per-target rotated matrix arrays
+    this._cachedWorldMatrices = []; // Per-target world matrix arrays (from glModelViewMatrix)
+
     this.logger = new Logger('FrameProcessor', true, debugMode ? 'debug' : 'info');
     this.logger.info('Frame processor initialized', {
       maxTrack,
@@ -259,54 +266,76 @@ class FrameProcessor {
       const detectorQuality = this.hasEverDetected ? newQuality : Math.max(newQuality, 0.5);
       this.cropDetector.detector.setQuality(detectorQuality);
       
-      this.logger.info('Quality applied to detector and tracker', {
-        trackerQuality: newQuality.toFixed(2),
-        detectorQuality: detectorQuality.toFixed(2),
-        qualityLevel: newQualityLevel,
-        oldQuality: oldQuality.toFixed(2),
-        oldQualityLevel,
-        hasEverDetected: this.hasEverDetected
-      });
+      // Only log when quality level actually changes (not just numeric value)
+      if (oldQualityLevel !== newQualityLevel) {
+        this.logger.debug('Quality level changed', {
+          oldQualityLevel,
+          newQualityLevel,
+          quality: newQuality.toFixed(2)
+        });
+      }
     }
     
     if (this.debugMode) {
-      const breakdown = {
-        total: totalFrameTime.toFixed(2),
-        inputLoad: inputLoadTime.toFixed(2),
-        detection: detectionTime.toFixed(2),
-        tracking: trackingTime.toFixed(2),
-        other: (totalFrameTime - inputLoadTime - detectionTime - trackingTime).toFixed(2)
-      };
+      // Reuse cached breakdown object to avoid allocations
+      if (!this._cachedBreakdown) {
+        this._cachedBreakdown = {};
+      }
+      
+      // Update cached object in place
+      this._cachedBreakdown.total = totalFrameTime.toFixed(2);
+      this._cachedBreakdown.inputLoad = inputLoadTime.toFixed(2);
+      this._cachedBreakdown.detection = detectionTime.toFixed(2);
+      this._cachedBreakdown.tracking = trackingTime.toFixed(2);
+      this._cachedBreakdown.other = (totalFrameTime - inputLoadTime - detectionTime - trackingTime).toFixed(2);
+      
       const perfStats = this.performanceManager.getStats();
       if (perfStats) {
-        breakdown.quality = perfStats.quality;
-        breakdown.qualityLevel = perfStats.qualityLevel;
-        breakdown.avgFPS = perfStats.currentFPS;
-        breakdown.avgFrameTime = perfStats.avgFrameTime;
+        this._cachedBreakdown.quality = perfStats.quality;
+        this._cachedBreakdown.qualityLevel = perfStats.qualityLevel;
+        this._cachedBreakdown.avgFPS = perfStats.currentFPS;
+        this._cachedBreakdown.avgFrameTime = perfStats.avgFrameTime;
+      } else {
+        delete this._cachedBreakdown.quality;
+        delete this._cachedBreakdown.qualityLevel;
+        delete this._cachedBreakdown.avgFPS;
+        delete this._cachedBreakdown.avgFrameTime;
       }
+      
       if (isDistributionEnabled) {
         const workStats = this.workDistributionManager.getStats();
-        breakdown.workDistribution = workStats.enabled;
-        breakdown.detectionSkipped = shouldSkipDetection;
-        breakdown.detectionFrameCounter = workStats.detectionFrameCounter;
-        breakdown.trackingRotationIndex = workStats.trackingRotationIndex;
+        this._cachedBreakdown.workDistribution = workStats.enabled;
+        this._cachedBreakdown.detectionSkipped = shouldSkipDetection;
+        this._cachedBreakdown.detectionFrameCounter = workStats.detectionFrameCounter;
+        this._cachedBreakdown.trackingRotationIndex = workStats.trackingRotationIndex;
+      } else {
+        delete this._cachedBreakdown.workDistribution;
+        delete this._cachedBreakdown.detectionSkipped;
+        delete this._cachedBreakdown.detectionFrameCounter;
+        delete this._cachedBreakdown.trackingRotationIndex;
       }
       
       // Add memory stats periodically
       if (this.memoryManager.frameCount % 30 === 0) {
         const memoryStats = this.memoryManager.getMemoryStats();
-        breakdown.memoryTensors = memoryStats.numTensors;
-        breakdown.memoryGPU = memoryStats.numBytesInGPUFormatted;
+        this._cachedBreakdown.memoryTensors = memoryStats.numTensors;
+        this._cachedBreakdown.memoryGPU = memoryStats.numBytesInGPUFormatted;
+      } else {
+        delete this._cachedBreakdown.memoryTensors;
+        delete this._cachedBreakdown.memoryGPU;
       }
       
       // Add scheduler stats periodically
       if (this.smartScheduler.totalFrames % 60 === 0 && this.smartScheduler.totalFrames > 0) {
         const skipStats = this.smartScheduler.getSkipStats();
-        breakdown.skipRate = skipStats.skipRate;
-        breakdown.consecutiveSkips = skipStats.consecutiveSkips;
+        this._cachedBreakdown.skipRate = skipStats.skipRate;
+        this._cachedBreakdown.consecutiveSkips = skipStats.consecutiveSkips;
+      } else {
+        delete this._cachedBreakdown.skipRate;
+        delete this._cachedBreakdown.consecutiveSkips;
       }
       
-      this.logger.debug('Frame timing', breakdown);
+      this.logger.debug('Frame timing', this._cachedBreakdown);
     }
     
     // Log quality status periodically (every 60 frames)
@@ -328,18 +357,26 @@ class FrameProcessor {
       });
     }
     
-    this.onUpdate && this.onUpdate({type: 'processDone'});
+    // Reuse cached callback object
+    if (this.onUpdate) {
+      this.onUpdate(this._cachedProcessDoneCallback);
+    }
   }
 
   _getMatchingIndexes() {
-    const matchingIndexes = [];
+    // Reuse cached array to avoid allocations
+    if (!this._cachedMatchingIndexes) {
+      this._cachedMatchingIndexes = [];
+    }
+    this._cachedMatchingIndexes.length = 0;
+    
     const states = this.trackingStateManager.getAllStates();
     for (let i = 0; i < states.length; i++) {
       const trackingState = states[i];
       if (trackingState.isTracking === true) continue;
-      matchingIndexes.push(i);
+      this._cachedMatchingIndexes.push(i);
     }
-    return matchingIndexes;
+    return this._cachedMatchingIndexes;
   }
 
   async _detectAndMatch(inputT, targetIndexes) {
@@ -391,7 +428,15 @@ class FrameProcessor {
           trackingState.showing = false;
           trackingState.trackingMatrix = null;
           this.logger.info('Target hidden', { targetIndex: i, trackMiss: trackingState.trackMiss });
-          this.onUpdate && this.onUpdate({type: 'updateMatrix', targetIndex: i, worldMatrix: null});
+          // Reuse cached callback object
+          if (this.onUpdate) {
+            if (!this._cachedUpdateMatrixCallbacks[i]) {
+              this._cachedUpdateMatrixCallbacks[i] = {type: 'updateMatrix', targetIndex: i, worldMatrix: null};
+            }
+            this._cachedUpdateMatrixCallbacks[i].targetIndex = i;
+            this._cachedUpdateMatrixCallbacks[i].worldMatrix = null;
+            this.onUpdate(this._cachedUpdateMatrixCallbacks[i]);
+          }
         }
       } else {
         trackingState.trackMiss = 0;
@@ -399,14 +444,55 @@ class FrameProcessor {
     }
     
     if (trackingState.showing) {
-      const worldMatrix = this.glModelViewMatrix(trackingState.currentModelViewTransform, this.markerDimensions[i][1]);
+      // Cache world matrix array to avoid allocations in glModelViewMatrix
+      if (!this._cachedWorldMatrices[i]) {
+        this._cachedWorldMatrices[i] = new Array(16);
+      }
+      
+      // Call glModelViewMatrix and copy result into cached array
+      const tempWorldMatrix = this.glModelViewMatrix(trackingState.currentModelViewTransform, this.markerDimensions[i][1]);
+      for (let j = 0; j < 16; j++) {
+        this._cachedWorldMatrices[i][j] = tempWorldMatrix[j];
+      }
+      const worldMatrix = this._cachedWorldMatrices[i];
 
       const isInputRotated = input.width === this.inputHeight && input.height === this.inputWidth;
-      const finalMatrix = isInputRotated 
-        ? this.getRotatedZ90Matrix(worldMatrix)
-        : worldMatrix.slice();
+      
+      // Reuse cached arrays to avoid allocations
+      let finalMatrix;
+      if (isInputRotated) {
+        // getRotatedZ90Matrix now returns a cached array, but we need our own copy
+        // since the function's cache might be reused by other calls
+        if (!this._cachedRotatedMatrices[i]) {
+          this._cachedRotatedMatrices[i] = new Array(16);
+        }
+        const rotated = this.getRotatedZ90Matrix(worldMatrix);
+        // Copy into our per-target cached array
+        for (let j = 0; j < 16; j++) {
+          this._cachedRotatedMatrices[i][j] = rotated[j];
+        }
+        finalMatrix = this._cachedRotatedMatrices[i];
+      } else {
+        // Cache matrix array for slice
+        if (!this._cachedMatrixArrays[i]) {
+          this._cachedMatrixArrays[i] = new Array(16);
+        }
+        // Copy worldMatrix into cached array (equivalent to slice)
+        for (let j = 0; j < 16; j++) {
+          this._cachedMatrixArrays[i][j] = worldMatrix[j];
+        }
+        finalMatrix = this._cachedMatrixArrays[i];
+      }
 
-      this.onUpdate && this.onUpdate({type: 'updateMatrix', targetIndex: i, worldMatrix: finalMatrix});
+      // Reuse cached callback object
+      if (this.onUpdate) {
+        if (!this._cachedUpdateMatrixCallbacks[i]) {
+          this._cachedUpdateMatrixCallbacks[i] = {type: 'updateMatrix', targetIndex: i, worldMatrix: null};
+        }
+        this._cachedUpdateMatrixCallbacks[i].targetIndex = i;
+        this._cachedUpdateMatrixCallbacks[i].worldMatrix = finalMatrix;
+        this.onUpdate(this._cachedUpdateMatrixCallbacks[i]);
+      }
     }
   }
 

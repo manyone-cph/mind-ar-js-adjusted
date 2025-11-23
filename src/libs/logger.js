@@ -6,6 +6,12 @@ class Logger {
     
     const levels = { error: 0, warn: 1, info: 2, debug: 3 };
     this.levelValue = levels[level] ?? levels.info;
+    
+    // Cache Date object and timestamp string to avoid allocations
+    this._cachedDate = new Date();
+    this._cachedTimestamp = '';
+    this._lastTimestampUpdate = 0;
+    this._timestampUpdateInterval = 1; // Update timestamp every 1ms
   }
 
   _shouldLog(level) {
@@ -16,9 +22,19 @@ class Logger {
   }
 
   _formatMessage(level, message, data = {}) {
-    const timestamp = new Date().toISOString();
+    // Update cached timestamp only if enough time has passed
+    const now = Date.now();
+    if (now - this._lastTimestampUpdate >= this._timestampUpdateInterval) {
+      this._cachedDate.setTime(now);
+      this._cachedTimestamp = this._cachedDate.toISOString();
+      this._lastTimestampUpdate = now;
+    }
+    
     const prefix = `[MindAR:${this.component}]`;
-    return { timestamp, level, prefix, message, ...data };
+    
+    // Create object with data spread (necessary for console.log serialization)
+    // The object is small and will be GC'd quickly after console.log serializes it
+    return { timestamp: this._cachedTimestamp, level, prefix, message, ...data };
   }
 
   error(message, data = {}) {
