@@ -6,7 +6,6 @@ import {Tracker} from './tracker/tracker.js';
 import {CropDetector} from './detector/crop-detector.js';
 import {Compiler} from './compiler.js';
 import {InputLoader} from './input-loader.js';
-import {OneEuroFilter} from '../libs/one-euro-filter.js';
 
 const DEFAULT_FILTER_CUTOFF = 0.001; // 1Hz. time period in milliseconds
 const DEFAULT_FILTER_BETA = 1000;
@@ -189,10 +188,8 @@ class Controller {
 	isTracking: false,
 	currentModelViewTransform: null,
 	trackCount: 0,
-	trackMiss: 0,
-	filter: new OneEuroFilter({minCutOff: this.filterMinCF, beta: this.filterBeta, dCutOff: this.filterDCutOff})
+	trackMiss: 0
       });
-      //console.log("filterMinCF", this.filterMinCF, this.filterBeta);
     }
 
     // Extract frame processing logic into reusable function
@@ -277,7 +274,6 @@ class Controller {
 	    if (trackingState.trackCount > this.warmupTolerance) {
 	      trackingState.showing = true;
 	      trackingState.trackingMatrix = null;
-	      trackingState.filter.reset();
 	    }
 	  }
 	}
@@ -299,13 +295,13 @@ class Controller {
 	}
 	
 	// if showing, then call onUpdate, with world matrix
+	// Note: Filtering is now handled by the matrix post-processor, not here
 	if (trackingState.showing) {
 	  const worldMatrix = this._glModelViewMatrix(trackingState.currentModelViewTransform, i);
-	  trackingState.trackingMatrix = trackingState.filter.filter(Date.now(), worldMatrix);
 
 	  let clone = [];
-	  for (let j = 0; j < trackingState.trackingMatrix.length; j++) {
-	    clone[j] = trackingState.trackingMatrix[j];
+	  for (let j = 0; j < worldMatrix.length; j++) {
+	    clone[j] = worldMatrix[j];
 	  }
 
       const isInputRotated = input.width === this.inputHeight && input.height === this.inputWidth;
@@ -433,19 +429,9 @@ class Controller {
       this.filterDCutOff = filterDCutOff;
     }
 
-    // Update all existing filter instances
-    if (this.trackingStates && this.trackingStates.length > 0) {
-      for (let i = 0; i < this.trackingStates.length; i++) {
-        const trackingState = this.trackingStates[i];
-        if (trackingState.filter) {
-          trackingState.filter.updateParams({
-            minCutOff: this.filterMinCF,
-            beta: this.filterBeta,
-            dCutOff: this.filterDCutOff
-          });
-        }
-      }
-    }
+    // Note: Filtering is now handled by the matrix post-processor, not in the controller
+    // The filter parameters are still stored here for backward compatibility
+    // but they are passed to the post-processor via the AR session configuration
   }
 
   setWarmupTolerance(warmupTolerance) {
