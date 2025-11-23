@@ -1,5 +1,6 @@
 import { UI } from "../../ui/ui.js";
 import { getResolutionConstraints } from "../../libs/resolution-utils.js";
+import { Logger } from "../../libs/logger.js";
 
 export class VideoManager {
   constructor(container, ui, shouldFaceUser, userDeviceId, environmentDeviceId, resolution = null) {
@@ -10,6 +11,7 @@ export class VideoManager {
     this.environmentDeviceId = environmentDeviceId;
     this.resolution = resolution;
     this.video = null;
+    this.logger = new Logger('VideoManager', true, 'info');
   }
 
   async start() {
@@ -26,6 +28,7 @@ export class VideoManager {
       this.container.appendChild(this.video);
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        this.logger.error('getUserMedia not supported');
         this.ui.showCompatibility();
         reject();
         return;
@@ -57,23 +60,36 @@ export class VideoManager {
         // Using 'ideal' allows the browser to adapt to portrait/landscape orientation
         constraints.video.width = resolutionConstraints.width;
         constraints.video.height = resolutionConstraints.height;
+        this.logger.info('Setting video resolution', { resolution: this.resolution, constraints: resolutionConstraints });
       }
+
+      this.logger.info('Requesting camera access', {
+        shouldFaceUser: this.shouldFaceUser,
+        userDeviceId: this.userDeviceId,
+        environmentDeviceId: this.environmentDeviceId,
+        resolution: this.resolution
+      });
 
       navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
         this.video.addEventListener('loadedmetadata', () => {
           this.video.setAttribute('width', this.video.videoWidth);
           this.video.setAttribute('height', this.video.videoHeight);
+          this.logger.info('Video metadata loaded', {
+            videoWidth: this.video.videoWidth,
+            videoHeight: this.video.videoHeight
+          });
           resolve();
         });
         this.video.srcObject = stream;
       }).catch((err) => {
-        console.log("getUserMedia error", err);
+        this.logger.error('getUserMedia failed', { error: err.message, name: err.name, constraints });
         reject();
       });
     });
   }
 
   stop() {
+    this.logger.info('Stopping video');
     if (this.video && this.video.srcObject) {
       const tracks = this.video.srcObject.getTracks();
       tracks.forEach(function (track) {

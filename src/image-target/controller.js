@@ -9,6 +9,7 @@ import {PerformanceManager} from './performance/performance-manager.js';
 import {WorkerManager} from './workers/worker-manager.js';
 import {TrackingStateManager} from './core/tracking-state-manager.js';
 import {FrameProcessor} from './core/frame-processor.js';
+import {Logger} from '../libs/logger.js';
 import {
   DEFAULT_FILTER_CUTOFF,
   DEFAULT_FILTER_BETA,
@@ -52,6 +53,17 @@ class Controller {
     this.onUpdate = onUpdate;
     this.debugMode = debugMode;
 
+    this.logger = new Logger('Controller', true, debugMode ? 'debug' : 'info');
+    this.logger.info('Initializing controller', {
+      inputWidth,
+      inputHeight,
+      maxTrack,
+      targetFPS,
+      filterMinCF: this.filterMinCF,
+      filterBeta: this.filterBeta,
+      filterDCutOff: this.filterDCutOff
+    });
+
     this.cropDetector = new CropDetector(this.inputWidth, this.inputHeight, debugMode);
     this.inputLoader = new InputLoader(this.inputWidth, this.inputHeight);
     this.markerDimensions = null;
@@ -65,7 +77,8 @@ class Controller {
 
     this.performanceManager = new PerformanceManager({
       targetFrameTime: targetFPS ? (1000 / targetFPS) : 33.33,
-      minFrameTime: 16.67
+      minFrameTime: 16.67,
+      debugMode: this.debugMode
     });
 
     this.workerManager = new WorkerManager();
@@ -82,14 +95,32 @@ class Controller {
   }
 
   async addImageTargets(fileURL) {
-    const content = await fetch(fileURL);
-    const buffer = await content.arrayBuffer();
-    return this.addImageTargetsFromBuffer(buffer);
+    this.logger.info('Loading image targets from URL', { fileURL });
+    try {
+      const content = await fetch(fileURL);
+      const buffer = await content.arrayBuffer();
+      return this.addImageTargetsFromBuffer(buffer);
+    } catch (error) {
+      this.logger.error('Failed to load image targets from URL', { fileURL, error: error.message });
+      throw error;
+    }
   }
 
   addImageTargetsFromBuffer(buffer) {
+    this.logger.info('Adding image targets from buffer', { bufferSize: buffer.byteLength });
     const compiler = new Compiler();
-    const dataList = compiler.importData(buffer);
+    let dataList;
+    try {
+      dataList = compiler.importData(buffer);
+    } catch (error) {
+      this.logger.error('Failed to import target data from buffer', { error: error.message });
+      throw error;
+    }
+
+    if (!dataList || dataList.length === 0) {
+      this.logger.warn('No target data found in buffer');
+      return {dimensions: [], matchingDataList: [], trackingDataList: []};
+    }
 
     const trackingDataList = [];
     const matchingDataList = [];
@@ -99,6 +130,8 @@ class Controller {
       trackingDataList.push(dataList[i].trackingData);
       dimensions.push([dataList[i].targetImage.width, dataList[i].targetImage.height]);
     }
+
+    this.logger.info('Image targets loaded', { count: dimensions.length, dimensions });
 
     this.markerDimensions = dimensions;
     this.tracker = new Tracker(
@@ -143,10 +176,12 @@ class Controller {
         glModelViewMatrix(modelViewTransform, targetHeight)
     });
 
+    this.logger.info('Controller setup complete', { targetCount: dimensions.length });
     return {dimensions, matchingDataList, trackingDataList};
   }
 
   dispose() {
+    this.logger.info('Disposing controller');
     this.stopProcessVideo();
     this.workerManager.dispose();
   }
@@ -173,11 +208,20 @@ class Controller {
   }
 
   processVideo(input) {
-    if (this.processingVideo) return;
+    if (this.processingVideo) {
+      this.logger.warn('processVideo called while already processing');
+      return;
+    }
     if (!this.frameProcessor) {
+      this.logger.error('Must call addImageTargets before processVideo');
       throw new Error('Must call addImageTargets before processVideo');
     }
 
+    this.logger.info('Starting video processing', {
+      videoWidth: input.videoWidth,
+      videoHeight: input.videoHeight,
+      hasRequestVideoFrameCallback: typeof input.requestVideoFrameCallback === 'function'
+    });
     this.processingVideo = true;
     this.trackingStateManager.reset();
 
@@ -221,6 +265,9 @@ class Controller {
   }
 
   stopProcessVideo() {
+    if (this.processingVideo) {
+      this.logger.info('Stopping video processing');
+    }
     this.processingVideo = false;
     if (this.frameProcessor) {
       this.frameProcessor.setPaused(false);
@@ -247,6 +294,7 @@ class Controller {
 
   setTargetFPS(targetFPS) {
     validateTargetFPS(targetFPS);
+    this.logger.info('Setting target FPS', { targetFPS });
     this.targetFPS = targetFPS;
     if (this.frameProcessor) {
       this.frameProcessor.setTargetFPS(targetFPS);
@@ -288,6 +336,7 @@ class Controller {
 
   setMaxTrack(maxTrack) {
     validateMaxTrack(maxTrack);
+    this.logger.info('Setting max track', { maxTrack });
     this.maxTrack = Math.floor(maxTrack);
     if (this.frameProcessor) {
       this.frameProcessor.maxTrack = this.maxTrack;

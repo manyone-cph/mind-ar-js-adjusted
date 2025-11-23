@@ -1,6 +1,7 @@
 import { Matrix4, Vector3, Quaternion } from "three";
 import { OneEuroFilter } from '../../libs/one-euro-filter.js';
 import { zscore, modifiedZscore, iqr } from 'divinator';
+import { Logger } from '../../libs/logger.js';
 
 /**
  * Matrix Post-Processor
@@ -37,6 +38,8 @@ export class MatrixPostProcessor {
     // Per-target state
     this.targetStates = new Map();
     this.lastDebugLogTime = new Map();
+    
+    this.logger = new Logger('MatrixPostProcessor', true, this.config.debugMode ? 'debug' : 'info');
   }
 
   /**
@@ -381,11 +384,11 @@ export class MatrixPostProcessor {
 
     if (shouldLog) {
       this.lastDebugLogTime.set(targetIndex, now);
-      console.log(`[MindAR PostProcessor]`, {
-        targetIndex,
-        event,
-        ...data
-      });
+      if (event === 'OUTLIER_DETECTED') {
+        this.logger.warn('Outlier detected', { targetIndex, ...data });
+      } else {
+        this.logger.debug('Post-processor update', { targetIndex, event, ...data });
+      }
     }
   }
 

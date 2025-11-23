@@ -6,6 +6,7 @@ import { MatrixUpdater } from "./matrix-updater.js";
 import { ResizeHandler } from "./resize-handler.js";
 import { ARSession } from "./ar-session.js";
 import { UI } from "../../ui/ui.js";
+import { Logger } from "../../libs/logger.js";
 
 export class MindARThree {
   constructor({
@@ -61,6 +62,14 @@ export class MindARThree {
 
     this.shouldFaceUser = false;
 
+    this.logger = new Logger('MindARThree', true, 'info');
+    this.logger.info('Initializing MindAR', {
+      maxTrack,
+      hasImageTargetSrc: !!imageTargetSrc,
+      postProcessorEnabled: postProcessorConfig !== null,
+      visualizerEnabled: visualizerConfig !== null
+    });
+
     // Initialize UI
     this.ui = new UI({ uiLoading, uiScanning, uiError });
 
@@ -94,12 +103,20 @@ export class MindARThree {
   }
 
   async start() {
+    this.logger.info('Starting MindAR session');
     this.ui.showLoading();
-    await this.videoManager.start();
-    await this._startAR();
+    try {
+      await this.videoManager.start();
+      await this._startAR();
+      this.logger.info('MindAR session started successfully');
+    } catch (error) {
+      this.logger.error('Failed to start MindAR session', { error: error.message });
+      throw error;
+    }
   }
 
   stop() {
+    this.logger.info('Stopping MindAR session');
     if (this.arSession) {
       this.arSession.stop();
     }
@@ -318,7 +335,7 @@ export class MindARThree {
         if (this.matrixUpdater) {
           this.matrixUpdater.updatePostProcessorConfig(ppConfig);
         } else {
-          console.warn('[MindAR] matrixUpdater not available when trying to update post-processor config');
+          this.logger.warn('matrixUpdater not available when trying to update post-processor config');
         }
       }
     }

@@ -1,3 +1,5 @@
+import {Logger} from '../../libs/logger.js';
+
 class PerformanceManager {
   constructor(config = {}) {
     this.config = {
@@ -16,6 +18,14 @@ class PerformanceManager {
     this.lastAdaptationFrame = 0;
     this.performanceHistory = [];
     this.maxHistorySize = 60; // Keep last 60 frames
+
+    this.logger = new Logger('PerformanceManager', true, config.debugMode ? 'debug' : 'info');
+    this.logger.info('Performance manager initialized', {
+      targetFrameTime: this.config.targetFrameTime,
+      adaptationInterval: this.config.adaptationInterval,
+      minQuality: this.config.minQuality,
+      maxQuality: this.config.maxQuality
+    });
   }
 
   recordFrameTime(frameTime) {
@@ -36,7 +46,7 @@ class PerformanceManager {
   }
 
   _adaptQuality() {
-    if (this.frameTimes.length < 5) return;
+    if (this.frameTimes.length < 5) return false;
 
     const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
     const targetFrameTime = this.config.targetFrameTime;
@@ -44,6 +54,8 @@ class PerformanceManager {
     const performanceRatio = targetFrameTime / avgFrameTime;
     const qualityChange = performanceRatio - 1.0;
 
+    const oldQuality = this.currentQuality;
+    const oldQualityLevel = this.getQualityLevel();
     let newQuality = this.currentQuality;
 
     if (Math.abs(qualityChange) > this.config.qualityChangeThreshold) {
@@ -64,6 +76,30 @@ class PerformanceManager {
 
     const qualityChanged = Math.abs(newQuality - this.currentQuality) > 0.05;
     this.currentQuality = newQuality;
+
+    if (qualityChanged) {
+      const newQualityLevel = this.getQualityLevel();
+      const avgFPS = (1000 / avgFrameTime).toFixed(1);
+      
+      this.logger.info('Quality level changed', {
+        oldQuality: oldQuality.toFixed(2),
+        newQuality: newQuality.toFixed(2),
+        oldQualityLevel,
+        newQualityLevel,
+        avgFrameTime: avgFrameTime.toFixed(2),
+        avgFPS,
+        performanceRatio: performanceRatio.toFixed(2)
+      });
+    } else {
+      this.logger.debug('Quality adaptation check', {
+        quality: this.currentQuality.toFixed(2),
+        qualityLevel: this.getQualityLevel(),
+        avgFrameTime: avgFrameTime.toFixed(2),
+        avgFPS: (1000 / avgFrameTime).toFixed(1),
+        qualityChange: qualityChange.toFixed(3),
+        threshold: this.config.qualityChangeThreshold
+      });
+    }
 
     this.performanceHistory.push({
       frameTime: avgFrameTime,
@@ -109,7 +145,8 @@ class PerformanceManager {
       minFrameTime: minFrameTime.toFixed(2),
       currentFPS: (1000 / avgFrameTime).toFixed(1),
       quality: this.currentQuality.toFixed(2),
-      qualityLevel: this.getQualityLevel()
+      qualityLevel: this.getQualityLevel(),
+      frameCount: this.frameCount
     };
   }
 }
