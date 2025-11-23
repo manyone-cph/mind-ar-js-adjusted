@@ -11,8 +11,6 @@ import {TrackingStateManager} from './core/tracking-state-manager.js';
 import {FrameProcessor} from './core/frame-processor.js';
 import {Logger} from '../libs/logger.js';
 import {
-  DEFAULT_FILTER_CUTOFF,
-  DEFAULT_FILTER_BETA,
   DEFAULT_FILTER_DCUTOFF,
   DEFAULT_WARMUP_TOLERANCE,
   DEFAULT_MISS_TOLERANCE
@@ -36,16 +34,12 @@ class Controller {
     maxTrack = 1,
     warmupTolerance = null,
     missTolerance = null,
-    filterMinCF = null,
-    filterBeta = null,
     filterDCutOff = null,
     targetFPS = null
   }) {
     this.inputWidth = inputWidth;
     this.inputHeight = inputHeight;
     this.maxTrack = maxTrack;
-    this.filterMinCF = filterMinCF === null ? DEFAULT_FILTER_CUTOFF : filterMinCF;
-    this.filterBeta = filterBeta === null ? DEFAULT_FILTER_BETA : filterBeta;
     this.filterDCutOff = filterDCutOff === null ? DEFAULT_FILTER_DCUTOFF : filterDCutOff;
     this.warmupTolerance = warmupTolerance === null ? DEFAULT_WARMUP_TOLERANCE : warmupTolerance;
     this.missTolerance = missTolerance === null ? DEFAULT_MISS_TOLERANCE : missTolerance;
@@ -59,8 +53,6 @@ class Controller {
       inputHeight,
       maxTrack,
       targetFPS,
-      filterMinCF: this.filterMinCF,
-      filterBeta: this.filterBeta,
       filterDCutOff: this.filterDCutOff
     });
 
@@ -312,15 +304,9 @@ class Controller {
     }
   }
 
-  setFilterParams({filterMinCF, filterBeta, filterDCutOff}) {
-    validateFilterParams({filterMinCF, filterBeta, filterDCutOff});
+  setFilterParams({filterDCutOff}) {
+    validateFilterParams({filterDCutOff: filterDCutOff});
 
-    if (filterMinCF !== undefined) {
-      this.filterMinCF = filterMinCF;
-    }
-    if (filterBeta !== undefined) {
-      this.filterBeta = filterBeta;
-    }
     if (filterDCutOff !== undefined) {
       this.filterDCutOff = filterDCutOff;
     }
@@ -353,8 +339,6 @@ class Controller {
 
   getConfig() {
     return {
-      filterMinCF: this.filterMinCF,
-      filterBeta: this.filterBeta,
       filterDCutOff: this.filterDCutOff,
       warmupTolerance: this.warmupTolerance,
       missTolerance: this.missTolerance,

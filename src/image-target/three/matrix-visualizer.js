@@ -63,6 +63,8 @@ export class MatrixVisualizer {
       .mindar-visualizer-processed-pos { stroke: #51cf66; }
       .mindar-visualizer-raw-rot { stroke: #4dabf7; }
       .mindar-visualizer-processed-rot { stroke: #ffd43b; }
+      .mindar-visualizer-raw-scale { stroke: #ff922b; }
+      .mindar-visualizer-processed-scale { stroke: #845ef7; }
       .mindar-visualizer-skipped { stroke: #ff8787; opacity: 0.7; }
       .mindar-visualizer-grid { stroke: #495057; stroke-width: 0.5; opacity: 0.3; }
       .mindar-visualizer-label { fill: #fff; font-size: 10px; }
@@ -167,7 +169,7 @@ export class MatrixVisualizer {
   }
 
   /**
-   * Extract position and rotation data from a matrix
+   * Extract position, rotation, and scale data from a matrix
    */
   _extractData(matrix) {
     if (!matrix) return null;
@@ -186,9 +188,13 @@ export class MatrixVisualizer {
       // Calculate position magnitude (distance from origin)
       const positionMagnitude = pos.length();
       
+      // Calculate scale magnitude (average of x, y, z components)
+      const scaleMagnitude = (scale.x + scale.y + scale.z) / 3;
+      
       return {
         position: positionMagnitude,
-        rotation: rotationAngle
+        rotation: rotationAngle,
+        scale: scaleMagnitude
       };
     } catch (e) {
       // If decomposition fails, return null
@@ -276,6 +282,7 @@ export class MatrixVisualizer {
     // Find min/max values for scaling
     let minPos = Infinity, maxPos = -Infinity;
     let minRot = Infinity, maxRot = -Infinity;
+    let minScale = Infinity, maxScale = -Infinity;
     
     history.forEach(point => {
       if (point.raw) {
@@ -283,18 +290,27 @@ export class MatrixVisualizer {
         maxPos = Math.max(maxPos, point.raw.position);
         minRot = Math.min(minRot, point.raw.rotation);
         maxRot = Math.max(maxRot, point.raw.rotation);
+        if (point.raw.scale !== undefined && point.raw.scale !== null) {
+          minScale = Math.min(minScale, point.raw.scale);
+          maxScale = Math.max(maxScale, point.raw.scale);
+        }
       }
       if (point.processed) {
         minPos = Math.min(minPos, point.processed.position);
         maxPos = Math.max(maxPos, point.processed.position);
         minRot = Math.min(minRot, point.processed.rotation);
         maxRot = Math.max(maxRot, point.processed.rotation);
+        if (point.processed.scale !== undefined && point.processed.scale !== null) {
+          minScale = Math.min(minScale, point.processed.scale);
+          maxScale = Math.max(maxScale, point.processed.scale);
+        }
       }
     });
     
     // Add padding to ranges
     let posRange = maxPos - minPos;
     let rotRange = maxRot - minRot;
+    let scaleRange = maxScale - minScale;
     if (posRange === 0) {
       minPos -= 0.1;
       maxPos += 0.1;
@@ -305,28 +321,42 @@ export class MatrixVisualizer {
       maxRot += 0.1;
       rotRange = 0.2;
     }
+    if (scaleRange === 0) {
+      minScale -= 0.1;
+      maxScale += 0.1;
+      scaleRange = 0.2;
+    }
     minPos -= posRange * 0.1;
     maxPos += posRange * 0.1;
     minRot -= rotRange * 0.1;
     maxRot += rotRange * 0.1;
+    minScale -= scaleRange * 0.1;
+    maxScale += scaleRange * 0.1;
     
-    // Draw position lines (upper half)
+    // Draw position lines (upper third)
     const posYOffset = padding;
-    const posHeight = graphHeight / 2;
+    const posHeight = graphHeight / 3;
     this._drawLine(history, width, posYOffset, posHeight, graphWidth, timeRange, now, 
       (p) => p.raw?.position, (p) => p.processed?.position,
       minPos, maxPos, 'raw-pos', 'processed-pos');
     
-    // Draw rotation lines (lower half)
+    // Draw rotation lines (middle third)
     const rotYOffset = padding + posHeight;
-    const rotHeight = graphHeight / 2;
+    const rotHeight = graphHeight / 3;
     this._drawLine(history, width, rotYOffset, rotHeight, graphWidth, timeRange, now,
       (p) => p.raw?.rotation, (p) => p.processed?.rotation,
       minRot, maxRot, 'raw-rot', 'processed-rot');
     
+    // Draw scale lines (lower third)
+    const scaleYOffset = padding + posHeight + rotHeight;
+    const scaleHeight = graphHeight / 3;
+    this._drawLine(history, width, scaleYOffset, scaleHeight, graphWidth, timeRange, now,
+      (p) => p.raw?.scale, (p) => p.processed?.scale,
+      minScale, maxScale, 'raw-scale', 'processed-scale');
+    
     // Draw skipped markers
     this._drawSkippedMarkers(history, width, posYOffset, posHeight, rotYOffset, rotHeight, 
-      graphWidth, timeRange, now, minPos, maxPos, minRot, maxRot);
+      scaleYOffset, scaleHeight, graphWidth, timeRange, now, minPos, maxPos, minRot, maxRot, minScale, maxScale);
   }
 
   /**
@@ -393,11 +423,12 @@ export class MatrixVisualizer {
    * Draw markers for skipped frames
    */
   _drawSkippedMarkers(history, width, posYOffset, posHeight, rotYOffset, rotHeight,
-                      graphWidth, timeRange, now, minPos, maxPos, minRot, maxRot) {
+                      scaleYOffset, scaleHeight, graphWidth, timeRange, now, minPos, maxPos, minRot, maxRot, minScale, maxScale) {
     const padding = 20;
     const posValRange = maxPos - minPos;
     const rotValRange = maxRot - minRot;
-    if (posValRange === 0 || rotValRange === 0) {
+    const scaleValRange = maxScale - minScale;
+    if (posValRange === 0 || rotValRange === 0 || scaleValRange === 0) {
       return;
     }
     
@@ -410,8 +441,7 @@ export class MatrixVisualizer {
       if (point.skipped && point.raw) {
         const x = padding + ((now - point.timestamp) / timeRange) * graphWidth;
         
-        // Position marker (upper half)
-        const posY = posYOffset + posHeight - ((point.raw.position - minPos) / posValRange) * posHeight;
+        // Position marker (upper third)
         const posMarker = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         posMarker.setAttribute('x1', x);
         posMarker.setAttribute('y1', posYOffset);
@@ -421,8 +451,7 @@ export class MatrixVisualizer {
         posMarker.setAttribute('stroke-width', strokeWidth);
         this.dataGroup.appendChild(posMarker);
         
-        // Rotation marker (lower half)
-        const rotY = rotYOffset + rotHeight - ((point.raw.rotation - minRot) / rotValRange) * rotHeight;
+        // Rotation marker (middle third)
         const rotMarker = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         rotMarker.setAttribute('x1', x);
         rotMarker.setAttribute('y1', rotYOffset);
@@ -431,6 +460,16 @@ export class MatrixVisualizer {
         rotMarker.setAttribute('class', 'mindar-visualizer-skipped');
         rotMarker.setAttribute('stroke-width', strokeWidth);
         this.dataGroup.appendChild(rotMarker);
+        
+        // Scale marker (lower third)
+        const scaleMarker = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        scaleMarker.setAttribute('x1', x);
+        scaleMarker.setAttribute('y1', scaleYOffset);
+        scaleMarker.setAttribute('x2', x);
+        scaleMarker.setAttribute('y2', scaleYOffset + scaleHeight);
+        scaleMarker.setAttribute('class', 'mindar-visualizer-skipped');
+        scaleMarker.setAttribute('stroke-width', strokeWidth);
+        this.dataGroup.appendChild(scaleMarker);
       }
     });
   }
@@ -443,20 +482,28 @@ export class MatrixVisualizer {
     
     const padding = 20;
     const graphHeight = height - padding * 2;
+    const sectionHeight = graphHeight / 3;
     
-    // Position label (upper half)
+    // Position label (upper third)
     const posLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     posLabel.setAttribute('x', padding);
     posLabel.setAttribute('y', padding + 15);
     posLabel.textContent = 'Position (m) - Red: Raw, Green: Processed';
     this.labelsGroup.appendChild(posLabel);
     
-    // Rotation label (lower half)
+    // Rotation label (middle third)
     const rotLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     rotLabel.setAttribute('x', padding);
-    rotLabel.setAttribute('y', padding + graphHeight / 2 + 15);
+    rotLabel.setAttribute('y', padding + sectionHeight + 15);
     rotLabel.textContent = 'Rotation (rad) - Blue: Raw, Yellow: Processed';
     this.labelsGroup.appendChild(rotLabel);
+    
+    // Scale label (lower third)
+    const scaleLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    scaleLabel.setAttribute('x', padding);
+    scaleLabel.setAttribute('y', padding + sectionHeight * 2 + 15);
+    scaleLabel.textContent = 'Scale - Orange: Raw, Purple: Processed';
+    this.labelsGroup.appendChild(scaleLabel);
     
     // Time label
     const timeLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');

@@ -19,9 +19,13 @@ export class MindARThree {
     uiLoading = "yes",
     uiScanning = "yes",
     uiError = "yes",
-    filterMinCF = null,
-    filterBeta = null,
     filterDCutOff = null,
+    positionFilterMinCF = null,
+    positionFilterBeta = null,
+    rotationFilterMinCF = null,
+    rotationFilterBeta = null,
+    scaleFilterMinCF = null,
+    scaleFilterBeta = null,
     warmupTolerance = null,
     missTolerance = null,
     userDeviceId = null,
@@ -50,16 +54,35 @@ export class MindARThree {
     this.container = container;
     this.imageTargetSrc = imageTargetSrc;
     this.maxTrack = maxTrack;
-    this.filterMinCF = filterMinCF;
-    this.filterBeta = filterBeta;
     this.filterDCutOff = filterDCutOff;
+    this.positionFilterMinCF = positionFilterMinCF;
+    this.positionFilterBeta = positionFilterBeta;
+    this.rotationFilterMinCF = rotationFilterMinCF;
+    this.rotationFilterBeta = rotationFilterBeta;
+    this.scaleFilterMinCF = scaleFilterMinCF;
+    this.scaleFilterBeta = scaleFilterBeta;
     this.warmupTolerance = warmupTolerance;
     this.missTolerance = missTolerance;
     this.userDeviceId = userDeviceId;
     this.environmentDeviceId = environmentDeviceId;
     this.resolution = resolution;
     this.targetFPS = targetFPS;
-    this.postProcessorConfig = postProcessorConfig;
+    
+    // Merge top-level filter settings into postProcessorConfig if enabled
+    if (postProcessorConfig !== null) {
+      this.postProcessorConfig = {
+        ...postProcessorConfig,
+        ...(positionFilterMinCF !== null && { positionFilterMinCF }),
+        ...(positionFilterBeta !== null && { positionFilterBeta }),
+        ...(rotationFilterMinCF !== null && { rotationFilterMinCF }),
+        ...(rotationFilterBeta !== null && { rotationFilterBeta }),
+        ...(scaleFilterMinCF !== null && { scaleFilterMinCF }),
+        ...(scaleFilterBeta !== null && { scaleFilterBeta }),
+        ...(filterDCutOff !== null && { filterDCutOff })
+      };
+    } else {
+      this.postProcessorConfig = postProcessorConfig;
+    }
     this.visualizerConfig = visualizerConfig;
     this.debug = debug;
     this.onVideoRestart = onVideoRestart;
@@ -253,24 +276,32 @@ export class MindARThree {
    * Unified configuration update method
    * @param {Object} config - Configuration object with the following structure:
    *   {
-   *     // Controller/Tracking settings
-   *     filterMinCF?: number,
-   *     filterBeta?: number,
-   *     filterDCutOff?: number,
+     *     // Controller/Tracking settings
+     *     filterDCutOff?: number,
    *     warmupTolerance?: number,
    *     missTolerance?: number,
    *     maxTrack?: number,
    *     targetFPS?: number | null,
    *     
+   *     // Filter settings (synced to post-processor if enabled)
+   *     positionFilterMinCF?: number,
+   *     positionFilterBeta?: number,
+   *     rotationFilterMinCF?: number,
+   *     rotationFilterBeta?: number,
+   *     scaleFilterMinCF?: number,
+   *     scaleFilterBeta?: number,
+   *     
    *     // Post-processor settings
-   *     postProcessor?: {
-   *       enabled?: boolean | null,  // null = disable, {} = enable with defaults, or config object
-   *       outlierDetectionEnabled?: boolean,
-   *       filterMinCF?: number,
-   *       filterBeta?: number,
-   *       filterDCutOff?: number,
-   *       scaleFilterMinCF?: number,
-   *       scaleFilterBeta?: number,
+     *     postProcessor?: {
+     *       enabled?: boolean | null,  // null = disable, {} = enable with defaults, or config object
+     *       outlierDetectionEnabled?: boolean,
+     *       positionFilterMinCF?: number,
+     *       positionFilterBeta?: number,
+     *       rotationFilterMinCF?: number,
+     *       rotationFilterBeta?: number,
+     *       scaleFilterMinCF?: number,
+     *       scaleFilterBeta?: number,
+     *       filterDCutOff?: number,
    *       outlierMethod?: 'zScore' | 'modifiedZScore' | 'iqr',
    *       outlierThreshold?: number,
    *       outlierHistorySize?: number,
@@ -296,42 +327,50 @@ export class MindARThree {
     const controller = this.arSession?.getController();
 
     // Update controller/tracking settings
-    if (config.filterMinCF !== undefined || config.filterBeta !== undefined || config.filterDCutOff !== undefined) {
-      if (config.filterMinCF !== undefined) {
-        this.filterMinCF = config.filterMinCF;
-      }
-      if (config.filterBeta !== undefined) {
-        this.filterBeta = config.filterBeta;
-      }
-      if (config.filterDCutOff !== undefined) {
-        this.filterDCutOff = config.filterDCutOff;
-      }
+    if (config.filterDCutOff !== undefined) {
+      this.filterDCutOff = config.filterDCutOff;
 
       if (controller) {
         controller.setFilterParams({
-          filterMinCF: config.filterMinCF,
-          filterBeta: config.filterBeta,
           filterDCutOff: config.filterDCutOff
         });
       }
+    }
 
-      // Automatically sync filter settings to post-processor if enabled
-      // This ensures filter settings work consistently like other settings
-      if (this.postProcessorConfig !== null && this.matrixUpdater) {
-        const ppConfig = {};
-        if (config.filterMinCF !== undefined) {
-          ppConfig.filterMinCF = config.filterMinCF;
-        }
-        if (config.filterBeta !== undefined) {
-          ppConfig.filterBeta = config.filterBeta;
-        }
-        if (config.filterDCutOff !== undefined) {
-          ppConfig.filterDCutOff = config.filterDCutOff;
-        }
-        // Merge with existing post-processor config
-        this.postProcessorConfig = { ...this.postProcessorConfig, ...ppConfig };
-        this.matrixUpdater.updatePostProcessorConfig(ppConfig);
-      }
+    // Update filter settings and sync to post-processor if enabled
+    const filterUpdates = {};
+    if (config.filterDCutOff !== undefined) {
+      filterUpdates.filterDCutOff = config.filterDCutOff;
+    }
+    if (config.positionFilterMinCF !== undefined) {
+      this.positionFilterMinCF = config.positionFilterMinCF;
+      filterUpdates.positionFilterMinCF = config.positionFilterMinCF;
+    }
+    if (config.positionFilterBeta !== undefined) {
+      this.positionFilterBeta = config.positionFilterBeta;
+      filterUpdates.positionFilterBeta = config.positionFilterBeta;
+    }
+    if (config.rotationFilterMinCF !== undefined) {
+      this.rotationFilterMinCF = config.rotationFilterMinCF;
+      filterUpdates.rotationFilterMinCF = config.rotationFilterMinCF;
+    }
+    if (config.rotationFilterBeta !== undefined) {
+      this.rotationFilterBeta = config.rotationFilterBeta;
+      filterUpdates.rotationFilterBeta = config.rotationFilterBeta;
+    }
+    if (config.scaleFilterMinCF !== undefined) {
+      this.scaleFilterMinCF = config.scaleFilterMinCF;
+      filterUpdates.scaleFilterMinCF = config.scaleFilterMinCF;
+    }
+    if (config.scaleFilterBeta !== undefined) {
+      this.scaleFilterBeta = config.scaleFilterBeta;
+      filterUpdates.scaleFilterBeta = config.scaleFilterBeta;
+    }
+
+    // Sync filter settings to post-processor if enabled
+    if (Object.keys(filterUpdates).length > 0 && this.postProcessorConfig !== null && this.matrixUpdater) {
+      this.postProcessorConfig = { ...this.postProcessorConfig, ...filterUpdates };
+      this.matrixUpdater.updatePostProcessorConfig(filterUpdates);
     }
 
     if (config.warmupTolerance !== undefined) {
@@ -476,9 +515,13 @@ export class MindARThree {
 
   getConfig() {
     const config = {
-      filterMinCF: this.filterMinCF,
-      filterBeta: this.filterBeta,
       filterDCutOff: this.filterDCutOff,
+      positionFilterMinCF: this.positionFilterMinCF,
+      positionFilterBeta: this.positionFilterBeta,
+      rotationFilterMinCF: this.rotationFilterMinCF,
+      rotationFilterBeta: this.rotationFilterBeta,
+      scaleFilterMinCF: this.scaleFilterMinCF,
+      scaleFilterBeta: this.scaleFilterBeta,
       warmupTolerance: this.warmupTolerance,
       missTolerance: this.missTolerance,
       maxTrack: this.maxTrack,
@@ -585,8 +628,6 @@ export class MindARThree {
       video,
       this.imageTargetSrc,
       {
-        filterMinCF: this.filterMinCF,
-        filterBeta: this.filterBeta,
         filterDCutOff: this.filterDCutOff,
         warmupTolerance: this.warmupTolerance,
         missTolerance: this.missTolerance,

@@ -14,14 +14,20 @@ export class MatrixPostProcessor {
     this.config = {
       enabled: config.enabled !== false,
       
-      // One Euro Filter settings
-      filterMinCF: config.filterMinCF ?? 0.001,      // Base cutoff frequency (Hz)
-      filterBeta: config.filterBeta ?? 1.0,          // Speed coefficient
-      filterDCutOff: config.filterDCutOff ?? 0.001,  // Derivative cutoff (Hz)
+      // Position filter settings
+      positionFilterMinCF: config.positionFilterMinCF ?? 0.001,
+      positionFilterBeta: config.positionFilterBeta ?? 1.0,
+      
+      // Rotation filter settings
+      rotationFilterMinCF: config.rotationFilterMinCF ?? 0.001,
+      rotationFilterBeta: config.rotationFilterBeta ?? 1.0,
       
       // Scale filter settings
       scaleFilterMinCF: config.scaleFilterMinCF ?? 0.0005,
       scaleFilterBeta: config.scaleFilterBeta ?? 0.5,
+      
+      // Shared filter settings
+      filterDCutOff: config.filterDCutOff ?? 0.001,
       
       // Outlier detection settings
       outlierDetectionEnabled: config.outlierDetectionEnabled === true,
@@ -51,13 +57,13 @@ export class MatrixPostProcessor {
       this.targetStates.set(targetIndex, {
         // One Euro Filters for each component
         positionFilter: new OneEuroFilter({
-          minCutOff: this.config.filterMinCF,
-          beta: this.config.filterBeta,
+          minCutOff: this.config.positionFilterMinCF,
+          beta: this.config.positionFilterBeta,
           dCutOff: this.config.filterDCutOff
         }),
         quaternionFilter: new OneEuroFilter({
-          minCutOff: this.config.filterMinCF,
-          beta: this.config.filterBeta,
+          minCutOff: this.config.rotationFilterMinCF,
+          beta: this.config.rotationFilterBeta,
           dCutOff: this.config.filterDCutOff
         }),
         scaleFilter: new OneEuroFilter({
@@ -310,20 +316,23 @@ export class MatrixPostProcessor {
 
       // Update filter parameters for all targets
       this.targetStates.forEach((state) => {
-        if (newConfig.filterMinCF !== undefined || newConfig.filterBeta !== undefined || newConfig.filterDCutOff !== undefined) {
+        if (newConfig.positionFilterMinCF !== undefined || newConfig.positionFilterBeta !== undefined || newConfig.filterDCutOff !== undefined) {
           state.positionFilter.updateParams({
-            minCutOff: this.config.filterMinCF,
-            beta: this.config.filterBeta,
-            dCutOff: this.config.filterDCutOff
-          });
-          state.quaternionFilter.updateParams({
-            minCutOff: this.config.filterMinCF,
-            beta: this.config.filterBeta,
+            minCutOff: this.config.positionFilterMinCF,
+            beta: this.config.positionFilterBeta,
             dCutOff: this.config.filterDCutOff
           });
         }
 
-        if (newConfig.scaleFilterMinCF !== undefined || newConfig.scaleFilterBeta !== undefined) {
+        if (newConfig.rotationFilterMinCF !== undefined || newConfig.rotationFilterBeta !== undefined || newConfig.filterDCutOff !== undefined) {
+          state.quaternionFilter.updateParams({
+            minCutOff: this.config.rotationFilterMinCF,
+            beta: this.config.rotationFilterBeta,
+            dCutOff: this.config.filterDCutOff
+          });
+        }
+
+        if (newConfig.scaleFilterMinCF !== undefined || newConfig.scaleFilterBeta !== undefined || newConfig.filterDCutOff !== undefined) {
           state.scaleFilter.updateParams({
             minCutOff: this.config.scaleFilterMinCF,
             beta: this.config.scaleFilterBeta,
