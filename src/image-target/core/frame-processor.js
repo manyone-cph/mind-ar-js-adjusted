@@ -1,5 +1,6 @@
 import {memory, nextFrame} from '@tensorflow/tfjs';
 import {WorkDistributionManager} from '../performance/work-distribution-manager.js';
+import {MemoryManager} from '../performance/memory-manager.js';
 import {Logger} from '../../libs/logger.js';
 
 const tf = {memory, nextFrame};
@@ -46,6 +47,25 @@ class FrameProcessor {
       detectionSkipInterval: 3, // Skip detection every 3 frames when tracking (less aggressive)
       maxTrackingPerFrame: 1, // Process 1 tracking target per frame when quality is low
       debugMode: debugMode
+    });
+    
+    this.memoryManager = new MemoryManager({
+      enableCleanup: true,
+      cleanupInterval: 60, // Cleanup every 60 frames
+      memoryThreshold: 100, // Alert if more than 100 tensors
+      aggressiveCleanup: true,
+      debugMode: debugMode
+    });
+
+    // Register cleanup callbacks
+    this.memoryManager.registerCleanupCallback(() => {
+      // Force disposal of any lingering tensors
+      if (this.debugMode) {
+        const stats = this.memoryManager.getMemoryStats();
+        if (stats.numTensors > 50) {
+          this.logger.debug('Memory stats', stats);
+        }
+      }
     });
     
     this.hasEverDetected = false; // Track if we've ever successfully detected a target
@@ -179,7 +199,11 @@ class FrameProcessor {
       }
     }
 
+    // Dispose input tensor immediately after use
     inputT.dispose();
+    
+    // Record frame for memory management
+    this.memoryManager.recordFrame();
     
     const totalFrameTime = performance.now() - frameStartTime;
     
@@ -230,12 +254,21 @@ class FrameProcessor {
         breakdown.detectionFrameCounter = workStats.detectionFrameCounter;
         breakdown.trackingRotationIndex = workStats.trackingRotationIndex;
       }
+      
+      // Add memory stats periodically
+      if (this.memoryManager.frameCount % 30 === 0) {
+        const memoryStats = this.memoryManager.getMemoryStats();
+        breakdown.memoryTensors = memoryStats.numTensors;
+        breakdown.memoryGPU = memoryStats.numBytesInGPUFormatted;
+      }
+      
       this.logger.debug('Frame timing', breakdown);
     }
     
     // Log quality status periodically (every 60 frames)
     const perfStats = this.performanceManager.getStats();
     if (perfStats && perfStats.frameCount > 0 && perfStats.frameCount % 60 === 0) {
+      const memoryStats = this.memoryManager.getMemoryStats();
       this.logger.info('Performance status', {
         quality: perfStats.quality,
         qualityLevel: perfStats.qualityLevel,
@@ -243,7 +276,9 @@ class FrameProcessor {
         avgFrameTime: perfStats.avgFrameTime,
         workDistributionEnabled: isDistributionEnabled,
         trackingCount: nTracking,
-        frameCount: perfStats.frameCount
+        frameCount: perfStats.frameCount,
+        memoryTensors: memoryStats.numTensors,
+        memoryGPU: memoryStats.numBytesInGPUFormatted
       });
     }
     
