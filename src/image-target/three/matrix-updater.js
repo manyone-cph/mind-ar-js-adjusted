@@ -114,6 +114,8 @@ export class MatrixUpdater {
   updatePostProcessorConfig(config) {
     if (this.postProcessor) {
       this.postProcessor.updateConfig(config);
+    } else {
+      console.warn('[MatrixUpdater] postProcessor not available when trying to update config');
     }
   }
 

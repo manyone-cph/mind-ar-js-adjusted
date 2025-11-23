@@ -289,10 +289,11 @@ export class MindARThree {
    */
   setPostProcessorConfig(config) {
     if (config === null) {
-      // Disable post-processor
+      // Disable post-processor by setting enabled: false
+      if (this.matrixUpdater && this.matrixUpdater.postProcessor) {
+        this.matrixUpdater.postProcessor.updateConfig({ enabled: false });
+      }
       this.postProcessorConfig = null;
-      // Note: Can't disable after initialization, would need to recreate matrixUpdater
-      // This is a limitation, but acceptable for now
     } else {
       // Update or enable post-processor
       if (this.postProcessorConfig === null) {
@@ -304,7 +305,11 @@ export class MindARThree {
       }
       
       if (this.matrixUpdater) {
+        // Pass the merged config to ensure all settings are updated
+        // The updateConfig method will merge this into the existing config
         this.matrixUpdater.updatePostProcessorConfig(config);
+      } else {
+        console.warn('[MindAR] matrixUpdater not available when trying to update post-processor config');
       }
     }
   }
