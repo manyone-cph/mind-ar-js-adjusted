@@ -44,6 +44,37 @@ class Tracker {
     }
 
     this.kernelCaches = {};
+    this.quality = 1.0;
+    this.searchSize = AR2_SEARCH_SIZE;
+    this.templateSize = AR2_DEFAULT_TS;
+  }
+
+  setQuality(quality) {
+    const oldQuality = this.quality;
+    this.quality = Math.max(0.3, Math.min(1.0, quality));
+    const qualityLevel = this.quality >= 0.8 ? 'high' : this.quality >= 0.5 ? 'medium' : 'low';
+    
+    let newSearchSize, newTemplateSize;
+    if (qualityLevel === 'high') {
+      newSearchSize = AR2_SEARCH_SIZE;
+      newTemplateSize = AR2_DEFAULT_TS;
+    } else if (qualityLevel === 'medium') {
+      newSearchSize = Math.max(6, Math.floor(AR2_SEARCH_SIZE * 0.75));
+      newTemplateSize = Math.max(4, Math.floor(AR2_DEFAULT_TS * 0.85));
+    } else {
+      newSearchSize = Math.max(4, Math.floor(AR2_SEARCH_SIZE * 0.5));
+      newTemplateSize = Math.max(4, Math.floor(AR2_DEFAULT_TS * 0.7));
+    }
+    
+    if (newSearchSize !== this.searchSize || newTemplateSize !== this.templateSize) {
+      this.searchSize = newSearchSize;
+      this.templateSize = newTemplateSize;
+      delete this.kernelCaches.computeMatching;
+    }
+  }
+
+  getQuality() {
+    return this.quality;
   }
 
   dummyRun(inputT) {
@@ -148,10 +179,10 @@ class Tracker {
   }
 
   _computeMatching(featurePointsT, imagePixelsT, imagePropertiesT, projectedImageT) {
-    const templateOneSize = AR2_DEFAULT_TS;
+    const templateOneSize = this.templateSize;
     const templateSize = templateOneSize * 2 + 1;
     const templateGap = AR2_DEFAULT_TS_GAP;
-    const searchOneSize = AR2_SEARCH_SIZE * templateGap;
+    const searchOneSize = this.searchSize * templateGap;
     const searchGap = AR2_SEARCH_GAP;
     const searchSize = searchOneSize * 2 + 1;
     const targetHeight = projectedImageT.shape[0];

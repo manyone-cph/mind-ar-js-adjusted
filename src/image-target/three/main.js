@@ -244,6 +244,24 @@ export class MindARThree {
           filterDCutOff: config.filterDCutOff
         });
       }
+
+      // Automatically sync filter settings to post-processor if enabled
+      // This ensures filter settings work consistently like other settings
+      if (this.postProcessorConfig !== null && this.matrixUpdater) {
+        const ppConfig = {};
+        if (config.filterMinCF !== undefined) {
+          ppConfig.filterMinCF = config.filterMinCF;
+        }
+        if (config.filterBeta !== undefined) {
+          ppConfig.filterBeta = config.filterBeta;
+        }
+        if (config.filterDCutOff !== undefined) {
+          ppConfig.filterDCutOff = config.filterDCutOff;
+        }
+        // Merge with existing post-processor config
+        this.postProcessorConfig = { ...this.postProcessorConfig, ...ppConfig };
+        this.matrixUpdater.updatePostProcessorConfig(ppConfig);
+      }
     }
 
     if (config.warmupTolerance !== undefined) {

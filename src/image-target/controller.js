@@ -6,6 +6,7 @@ import {Tracker} from './tracker/tracker.js';
 import {CropDetector} from './detector/crop-detector.js';
 import {Compiler} from './compiler.js';
 import {InputLoader} from './input-loader.js';
+import {PerformanceManager} from './performance-manager.js';
 
 const DEFAULT_FILTER_CUTOFF = 0.001; // 1Hz. time period in milliseconds
 const DEFAULT_FILTER_BETA = 1000;
@@ -37,6 +38,11 @@ class Controller {
     this.processingPaused = false; // Pause flag for troubleshooting
     this.interestedTargetIndex = -1;
     this.trackingStates = [];
+    
+    this.performanceManager = new PerformanceManager({
+      targetFrameTime: targetFPS ? (1000 / targetFPS) : 33.33,
+      minFrameTime: 16.67
+    });
 
     const near = 10;
     const far = 100000;
@@ -101,6 +107,10 @@ class Controller {
     }
 
     this.tracker = new Tracker(dimensions, trackingDataList, this.projectionTransform, this.inputWidth, this.inputHeight, this.debugMode);
+    
+    const quality = this.performanceManager.getQuality();
+    this.tracker.setQuality(quality);
+    this.cropDetector.detector.setQuality(quality);
 
     this.worker.postMessage({
       type: 'setup',
@@ -311,6 +321,15 @@ class Controller {
       
       const totalFrameTime = performance.now() - frameStartTime;
       
+      const oldQuality = this.performanceManager.getQuality();
+      const qualityChanged = this.performanceManager.recordFrameTime(totalFrameTime);
+      const newQuality = this.performanceManager.getQuality();
+      
+      if (qualityChanged && this.tracker && this.cropDetector) {
+        this.tracker.setQuality(newQuality);
+        this.cropDetector.detector.setQuality(newQuality);
+      }
+      
       if (this.debugMode) {
         const breakdown = {
           total: totalFrameTime.toFixed(2),
@@ -319,6 +338,12 @@ class Controller {
           tracking: trackingTime.toFixed(2),
           other: (totalFrameTime - inputLoadTime - detectionTime - trackingTime).toFixed(2)
         };
+        const perfStats = this.performanceManager.getStats();
+        if (perfStats) {
+          breakdown.quality = perfStats.quality;
+          breakdown.qualityLevel = perfStats.qualityLevel;
+          breakdown.avgFPS = perfStats.currentFPS;
+        }
         console.log('Frame timing:', breakdown);
       }
       

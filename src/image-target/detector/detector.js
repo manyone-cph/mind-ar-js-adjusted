@@ -43,10 +43,12 @@ class Detector {
 			numOctaves++;
 			if (numOctaves === maxOctaves) break;
 		}
+		this.maxNumOctaves = numOctaves;
 		this.numOctaves = numOctaves;
 
 		this.tensorCaches = {};
 		this.kernelCaches = {};
+		this.quality = 1.0;
 	}
 
 	// used in compiler
@@ -61,6 +63,23 @@ class Detector {
 		const img = new ImageData(arr, this.width, this.height);
 		return this.detect(img);
 	}
+	setQuality(quality) {
+		this.quality = Math.max(0.3, Math.min(1.0, quality));
+		const qualityLevel = this.quality >= 0.8 ? 'high' : this.quality >= 0.5 ? 'medium' : 'low';
+		
+		if (qualityLevel === 'high') {
+			this.numOctaves = this.maxNumOctaves;
+		} else if (qualityLevel === 'medium') {
+			this.numOctaves = Math.max(2, Math.floor(this.maxNumOctaves * 0.75));
+		} else {
+			this.numOctaves = Math.max(2, Math.floor(this.maxNumOctaves * 0.5));
+		}
+	}
+
+	getQuality() {
+		return this.quality;
+	}
+
 	/**
 	 * 
 	 * @param {tf.Tensor<tf.Rank>} inputImageT 
@@ -122,10 +141,13 @@ class Detector {
 			}
 			extremasTime = performance.now() - extremasStart;
 
-			// divide the input into N by N buckets, and for each bucket,
-			// collect the top 5 most significant extrema across extremas in all scale level
-			// result would be NUM_BUCKETS x NUM_FEATURES_PER_BUCKET extremas
-			prunedExtremasList = this._applyPrune(extremasResultsT);
+		// divide the input into N by N buckets, and for each bucket,
+		// collect the top 5 most significant extrema across extremas in all scale level
+		// result would be NUM_BUCKETS x NUM_FEATURES_PER_BUCKET extremas
+		const maxFeaturesPerBucket = this.quality >= 0.8 ? MAX_FEATURES_PER_BUCKET : 
+		                              this.quality >= 0.5 ? Math.max(3, Math.floor(MAX_FEATURES_PER_BUCKET * 0.75)) :
+		                              Math.max(2, Math.floor(MAX_FEATURES_PER_BUCKET * 0.5));
+		prunedExtremasList = this._applyPrune(extremasResultsT, maxFeaturesPerBucket);
 
 			const localizationStart = performance.now();
 			const prunedExtremasTTemp = this._computeLocalization(prunedExtremasList, dogPyramidImagesT);
@@ -710,11 +732,12 @@ class Detector {
 	/**
 	 * 
 	 * @param {tf.Tensor<tf.Rank>[]} extremasResultsT 
+	 * @param {number} maxFeaturesPerBucket
 	 * @returns 
 	 */
-	_applyPrune(extremasResultsT) {
+	_applyPrune(extremasResultsT, maxFeaturesPerBucket = MAX_FEATURES_PER_BUCKET) {
 		const nBuckets = NUM_BUCKETS_PER_DIMENSION * NUM_BUCKETS_PER_DIMENSION;
-		const nFeatures = MAX_FEATURES_PER_BUCKET;
+		const nFeatures = maxFeaturesPerBucket;
 		// combine results into a tensor of:
 		//   nBuckets x nFeatures x [score, octave, y, x]
 		const curAbsScores = [];

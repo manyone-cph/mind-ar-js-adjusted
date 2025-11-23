@@ -1,0 +1,120 @@
+class PerformanceManager {
+  constructor(config = {}) {
+    this.config = {
+      targetFrameTime: config.targetFrameTime ?? 33.33, // 30 FPS target (ms)
+      minFrameTime: config.minFrameTime ?? 16.67, // 60 FPS max (ms)
+      adaptationInterval: config.adaptationInterval ?? 30, // frames
+      qualityChangeThreshold: config.qualityChangeThreshold ?? 0.15, // 15% change
+      minQuality: config.minQuality ?? 0.3, // Minimum quality level (0-1)
+      maxQuality: config.maxQuality ?? 1.0, // Maximum quality level (0-1)
+      ...config
+    };
+
+    this.currentQuality = 1.0;
+    this.frameTimes = [];
+    this.frameCount = 0;
+    this.lastAdaptationFrame = 0;
+    this.performanceHistory = [];
+    this.maxHistorySize = 60; // Keep last 60 frames
+  }
+
+  recordFrameTime(frameTime) {
+    this.frameTimes.push(frameTime);
+    this.frameCount++;
+    
+    if (this.frameTimes.length > this.config.adaptationInterval) {
+      this.frameTimes.shift();
+    }
+
+    let qualityChanged = false;
+    if (this.frameCount - this.lastAdaptationFrame >= this.config.adaptationInterval) {
+      qualityChanged = this._adaptQuality();
+      this.lastAdaptationFrame = this.frameCount;
+    }
+    
+    return qualityChanged;
+  }
+
+  _adaptQuality() {
+    if (this.frameTimes.length < 5) return;
+
+    const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+    const targetFrameTime = this.config.targetFrameTime;
+    
+    const performanceRatio = targetFrameTime / avgFrameTime;
+    const qualityChange = performanceRatio - 1.0;
+
+    let newQuality = this.currentQuality;
+
+    if (Math.abs(qualityChange) > this.config.qualityChangeThreshold) {
+      if (qualityChange > 0) {
+        newQuality = Math.min(
+          this.currentQuality * (1 + qualityChange * 0.5),
+          this.config.maxQuality
+        );
+      } else {
+        newQuality = Math.max(
+          this.currentQuality * (1 + qualityChange * 0.5),
+          this.config.minQuality
+        );
+      }
+      
+      newQuality = Math.max(this.config.minQuality, Math.min(this.config.maxQuality, newQuality));
+    }
+
+    const qualityChanged = Math.abs(newQuality - this.currentQuality) > 0.05;
+    this.currentQuality = newQuality;
+
+    this.performanceHistory.push({
+      frameTime: avgFrameTime,
+      quality: this.currentQuality,
+      timestamp: performance.now()
+    });
+
+    if (this.performanceHistory.length > this.maxHistorySize) {
+      this.performanceHistory.shift();
+    }
+
+    return qualityChanged;
+  }
+
+  getQuality() {
+    return this.currentQuality;
+  }
+
+  getQualityLevel() {
+    if (this.currentQuality >= 0.8) return 'high';
+    if (this.currentQuality >= 0.5) return 'medium';
+    return 'low';
+  }
+
+  reset() {
+    this.currentQuality = 1.0;
+    this.frameTimes = [];
+    this.frameCount = 0;
+    this.lastAdaptationFrame = 0;
+    this.performanceHistory = [];
+  }
+
+  getStats() {
+    if (this.frameTimes.length === 0) return null;
+    
+    const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+    const maxFrameTime = Math.max(...this.frameTimes);
+    const minFrameTime = Math.min(...this.frameTimes);
+    
+    return {
+      avgFrameTime: avgFrameTime.toFixed(2),
+      maxFrameTime: maxFrameTime.toFixed(2),
+      minFrameTime: minFrameTime.toFixed(2),
+      currentFPS: (1000 / avgFrameTime).toFixed(1),
+      quality: this.currentQuality.toFixed(2),
+      qualityLevel: this.getQualityLevel()
+    };
+  }
+}
+
+export {
+  PerformanceManager
+};
+
