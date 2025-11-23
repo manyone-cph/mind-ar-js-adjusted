@@ -7,6 +7,7 @@ export class MatrixUpdater {
   constructor(anchors, postMatrixs, postProcessorConfig = null, visualizerConfig = null) {
     this.anchors = anchors;
     this.postMatrixs = postMatrixs;
+    this.container = null;
     
     // Initialize post-processor if enabled
     // null = disabled, {} = enabled with defaults, or custom config object
@@ -143,6 +144,29 @@ export class MatrixUpdater {
    * Initialize visualizer with container
    */
   initializeVisualizer(container) {
+    this.container = container;
+    if (this.visualizer) {
+      this.visualizer.initialize(container);
+    }
+  }
+
+  /**
+   * Create visualizer dynamically (for enabling debug mode after AR has started)
+   */
+  createVisualizer(config) {
+    if (!this.visualizer && config !== null) {
+      this.visualizer = new MatrixVisualizer(config);
+      if (this.container) {
+        this.visualizer.initialize(this.container);
+      }
+    }
+  }
+
+  /**
+   * Set container for visualizer (needed when creating visualizer dynamically)
+   */
+  setVisualizerContainer(container) {
+    this.container = container;
     if (this.visualizer) {
       this.visualizer.initialize(container);
     }
@@ -155,6 +179,16 @@ export class MatrixUpdater {
     if (this.visualizer) {
       this.visualizer.setEnabled(enabled);
     }
+  }
+
+  /**
+   * Get graph data from visualizer (for external visualization)
+   */
+  getGraphData() {
+    if (this.visualizer) {
+      return this.visualizer.getGraphData();
+    }
+    return new Map();
   }
 }
 

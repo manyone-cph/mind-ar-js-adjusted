@@ -8,6 +8,7 @@ export class MatrixVisualizer {
   constructor(config = {}) {
     this.config = {
       enabled: config.enabled ?? false,
+      debug: config.debug ?? false, // If true, collect data but don't render
       historyDuration: config.historyDuration ?? 5000, // 5 seconds in ms
       maxPoints: config.maxPoints ?? 300, // points along x-axis
       height: config.height ?? 150, // graph height in pixels
@@ -29,6 +30,12 @@ export class MatrixVisualizer {
    * Initialize the visualization DOM elements
    */
   initialize(container) {
+    // In debug mode, we don't render, just collect data
+    if (this.config.debug) {
+      this.container = container;
+      this.isInitialized = true;
+      return;
+    }
     if (!this.config.enabled || this.isInitialized) return;
     
     this.container = container;
@@ -89,7 +96,14 @@ export class MatrixVisualizer {
    * Add a data point for a target
    */
   addDataPoint(targetIndex, rawMatrix, processedMatrix, wasSkipped = false, timestamp = null) {
-    if (!this.config.enabled || !this.isInitialized) return;
+    // In debug mode, collect data but don't render
+    if (this.config.debug) {
+      if (!this.isInitialized) {
+        this.isInitialized = true;
+      }
+    } else {
+      if (!this.config.enabled || !this.isInitialized) return;
+    }
     
     if (!this.dataHistory.has(targetIndex)) {
       this.dataHistory.set(targetIndex, []);
@@ -124,8 +138,10 @@ export class MatrixVisualizer {
       history.splice(0, history.length - this.config.maxPoints);
     }
     
-    // Throttle rendering to avoid excessive DOM manipulation
-    this._scheduleRender();
+    // Only schedule render if not in debug mode
+    if (!this.config.debug) {
+      this._scheduleRender();
+    }
   }
 
   /**
@@ -495,11 +511,30 @@ export class MatrixVisualizer {
    */
   setEnabled(enabled) {
     this.config.enabled = enabled;
-    if (!enabled && this.isInitialized) {
+    if (!enabled && this.isInitialized && !this.config.debug) {
       this.destroy();
-    } else if (enabled && !this.isInitialized && this.container) {
+    } else if (enabled && !this.isInitialized && this.container && !this.config.debug) {
       this.initialize(this.container);
     }
+  }
+
+  /**
+   * Get graph data for external visualization
+   * Returns a copy of the data history
+   */
+  getGraphData() {
+    const result = new Map();
+    for (const [targetIndex, history] of this.dataHistory.entries()) {
+      result.set(targetIndex, [...history]);
+    }
+    return result;
+  }
+
+  /**
+   * Get configuration
+   */
+  getConfig() {
+    return { ...this.config };
   }
 }
 

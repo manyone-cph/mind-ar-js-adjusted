@@ -29,7 +29,8 @@ export class MindARThree {
     resolution = null,
     targetFPS = null,
     postProcessorConfig = null, // null = disabled, {} = enabled with defaults, or custom config object
-    visualizerConfig = null // null = disabled, {} = enabled with defaults, or custom config object
+    visualizerConfig = null, // null = disabled, {} = enabled with defaults, or custom config object
+    debug = false // If true, collect graph data but don't render (for external visualization)
   }) {
     // Required parameters - no fallback
     if (!container) {
@@ -59,6 +60,7 @@ export class MindARThree {
     this.targetFPS = targetFPS;
     this.postProcessorConfig = postProcessorConfig;
     this.visualizerConfig = visualizerConfig;
+    this.debug = debug;
 
     this.shouldFaceUser = false;
 
@@ -67,7 +69,8 @@ export class MindARThree {
       maxTrack,
       hasImageTargetSrc: !!imageTargetSrc,
       postProcessorEnabled: postProcessorConfig !== null,
-      visualizerEnabled: visualizerConfig !== null
+      visualizerEnabled: visualizerConfig !== null,
+      debug: debug
     });
 
     // Initialize UI
@@ -340,6 +343,47 @@ export class MindARThree {
       }
     }
 
+    // Update debug flag
+    if (config.debug !== undefined) {
+      this.debug = config.debug;
+      
+      // If debug is enabled, ensure visualizer is set up for data collection
+      if (this.debug && this.matrixUpdater) {
+        // Create visualizer in debug mode if it doesn't exist
+        if (this.visualizerConfig === null) {
+          this.visualizerConfig = {
+            enabled: false,
+            debug: true,
+            historyDuration: 5000,
+            maxPoints: 300
+          };
+          // Create visualizer dynamically
+          this.matrixUpdater.createVisualizer(this.visualizerConfig);
+          this.matrixUpdater.setVisualizerContainer(this.container);
+        } else {
+          // Update existing config
+          this.visualizerConfig = {
+            ...this.visualizerConfig,
+            enabled: false,
+            debug: true
+          };
+          // Update visualizer config if it exists
+          if (this.matrixUpdater.visualizer) {
+            this.matrixUpdater.visualizer.config.debug = true;
+            this.matrixUpdater.visualizer.config.enabled = false;
+          }
+        }
+      } else if (!this.debug && this.matrixUpdater && this.matrixUpdater.visualizer) {
+        // Disable debug mode
+        if (this.visualizerConfig) {
+          this.visualizerConfig.debug = false;
+        }
+        if (this.matrixUpdater.visualizer) {
+          this.matrixUpdater.visualizer.config.debug = false;
+        }
+      }
+    }
+
     // Update visualizer settings
     if (config.visualizer !== undefined) {
       if (config.visualizer === null) {
@@ -394,6 +438,7 @@ export class MindARThree {
         ...this.visualizerConfig,
         enabled: this.matrixUpdater?.visualizer?.config?.enabled ?? false
       } : null,
+      debug: this.debug,
       performanceProfiling: this.arSession?.getController()?.debugMode ?? false
     };
 
@@ -430,19 +475,49 @@ export class MindARThree {
     return null;
   }
 
+  /**
+   * Get graph data for external visualization
+   * @returns {Map<number, Array>} - Map of targetIndex -> array of data points
+   */
+  getGraphData() {
+    if (this.matrixUpdater) {
+      return this.matrixUpdater.getGraphData();
+    }
+    return new Map();
+  }
+
   async _startAR() {
     const video = this.videoManager.getVideo();
+
+    // Prepare visualizer config - if debug is true, enable data collection but not rendering
+    let visualizerConfig = this.visualizerConfig;
+    if (this.debug && visualizerConfig === null) {
+      // Create default config for debug mode (data collection only)
+      visualizerConfig = {
+        enabled: false,
+        debug: true,
+        historyDuration: 5000,
+        maxPoints: 300
+      };
+    } else if (this.debug && visualizerConfig !== null) {
+      // Merge debug flag into existing config
+      visualizerConfig = {
+        ...visualizerConfig,
+        enabled: false,
+        debug: true
+      };
+    }
 
     // Initialize matrix updater with post-processor and visualizer config
     this.matrixUpdater = new MatrixUpdater(
       this.anchorManager.getAnchors(),
       this.postMatrixs,
       this.postProcessorConfig,
-      this.visualizerConfig
+      visualizerConfig
     );
     
-    // Initialize visualizer if enabled
-    if (this.visualizerConfig !== null) {
+    // Initialize visualizer if enabled or in debug mode
+    if (visualizerConfig !== null) {
       this.matrixUpdater.initializeVisualizer(this.container);
     }
 
