@@ -26,7 +26,9 @@ export class MindARThree {
     userDeviceId = null,
     environmentDeviceId = null,
     resolution = null,
-    targetFPS = null
+    targetFPS = null,
+    postProcessorConfig = null, // null = disabled, {} = enabled with defaults, or custom config object
+    visualizerConfig = null // null = disabled, {} = enabled with defaults, or custom config object
   }) {
     // Required parameters - no fallback
     if (!container) {
@@ -54,6 +56,8 @@ export class MindARThree {
     this.environmentDeviceId = environmentDeviceId;
     this.resolution = resolution;
     this.targetFPS = targetFPS;
+    this.postProcessorConfig = postProcessorConfig;
+    this.visualizerConfig = visualizerConfig;
 
     this.shouldFaceUser = false;
 
@@ -264,7 +268,8 @@ export class MindARThree {
       warmupTolerance: this.warmupTolerance,
       missTolerance: this.missTolerance,
       maxTrack: this.maxTrack,
-      targetFPS: this.targetFPS
+      targetFPS: this.targetFPS,
+      postProcessorConfig: this.postProcessorConfig
     };
 
     // Include controller config if AR session is running
@@ -278,14 +283,93 @@ export class MindARThree {
     return config;
   }
 
+  /**
+   * Update post-processor configuration
+   * @param {Object} config - Partial configuration object to update, or null to disable
+   */
+  setPostProcessorConfig(config) {
+    if (config === null) {
+      // Disable post-processor
+      this.postProcessorConfig = null;
+      // Note: Can't disable after initialization, would need to recreate matrixUpdater
+      // This is a limitation, but acceptable for now
+    } else {
+      // Update or enable post-processor
+      if (this.postProcessorConfig === null) {
+        // Was disabled, now enabling with provided config
+        this.postProcessorConfig = config;
+      } else {
+        // Was enabled, merge config
+        this.postProcessorConfig = { ...this.postProcessorConfig, ...config };
+      }
+      
+      if (this.matrixUpdater) {
+        this.matrixUpdater.updatePostProcessorConfig(config);
+      }
+    }
+  }
+
+  /**
+   * Reset post-processor state for a specific target
+   * @param {number} targetIndex - Index of the target to reset
+   */
+  resetPostProcessorTarget(targetIndex) {
+    if (this.matrixUpdater) {
+      this.matrixUpdater.resetPostProcessorTarget(targetIndex);
+    }
+  }
+
+  /**
+   * Get post-processor state information for debugging
+   * @param {number} targetIndex - Index of the target
+   * @returns {Object|null} - State information or null if post-processor not enabled
+   */
+  getPostProcessorStateInfo(targetIndex) {
+    if (this.matrixUpdater) {
+      return this.matrixUpdater.getPostProcessorStateInfo(targetIndex);
+    }
+    return null;
+  }
+
+  /**
+   * Enable/disable visualizer
+   * @param {boolean} enabled - Whether to enable the visualizer
+   */
+  setVisualizerEnabled(enabled) {
+    if (this.matrixUpdater) {
+      this.matrixUpdater.setVisualizerEnabled(enabled);
+    }
+  }
+
+  /**
+   * Enable/disable post-processor debug logging
+   * @param {boolean} enabled - Whether to enable debug logging
+   * @param {number} logInterval - Milliseconds between logs (default: 1000)
+   */
+  setPostProcessorDebugMode(enabled, logInterval = 1000) {
+    if (this.matrixUpdater && this.matrixUpdater.postProcessor) {
+      this.matrixUpdater.postProcessor.updateConfig({
+        debugMode: enabled,
+        debugLogInterval: logInterval
+      });
+    }
+  }
+
   async _startAR() {
     const video = this.videoManager.getVideo();
 
-    // Initialize matrix updater
+    // Initialize matrix updater with post-processor and visualizer config
     this.matrixUpdater = new MatrixUpdater(
       this.anchorManager.getAnchors(),
-      this.postMatrixs
+      this.postMatrixs,
+      this.postProcessorConfig,
+      this.visualizerConfig
     );
+    
+    // Initialize visualizer if enabled
+    if (this.visualizerConfig !== null) {
+      this.matrixUpdater.initializeVisualizer(this.container);
+    }
 
     // Initialize resize handler
     this.resizeHandler = new ResizeHandler(
