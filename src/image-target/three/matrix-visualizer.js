@@ -277,8 +277,18 @@ export class MatrixVisualizer {
     });
     
     // Add padding to ranges
-    const posRange = maxPos - minPos || 0.1;
-    const rotRange = maxRot - minRot || 0.1;
+    let posRange = maxPos - minPos;
+    let rotRange = maxRot - minRot;
+    if (posRange === 0) {
+      minPos -= 0.1;
+      maxPos += 0.1;
+      posRange = 0.2;
+    }
+    if (rotRange === 0) {
+      minRot -= 0.1;
+      maxRot += 0.1;
+      rotRange = 0.2;
+    }
     minPos -= posRange * 0.1;
     maxPos += posRange * 0.1;
     minRot -= rotRange * 0.1;
@@ -308,7 +318,10 @@ export class MatrixVisualizer {
    */
   _drawLine(history, width, yOffset, height, graphWidth, timeRange, now, 
             rawGetter, processedGetter, minVal, maxVal, rawClass, processedClass) {
-    const valRange = maxVal - minVal || 0.1;
+    const valRange = maxVal - minVal;
+    if (valRange === 0) {
+      return;
+    }
     
     // Raw line
     const rawPath = this._createPath(history, width, yOffset, height, graphWidth, timeRange, now, 
@@ -357,7 +370,7 @@ export class MatrixVisualizer {
       }
     }
     
-    return path || null;
+    return path.length > 0 ? path : null;
   }
 
   /**
@@ -366,8 +379,11 @@ export class MatrixVisualizer {
   _drawSkippedMarkers(history, width, posYOffset, posHeight, rotYOffset, rotHeight,
                       graphWidth, timeRange, now, minPos, maxPos, minRot, maxRot) {
     const padding = 20;
-    const posValRange = maxPos - minPos || 0.1;
-    const rotValRange = maxRot - minRot || 0.1;
+    const posValRange = maxPos - minPos;
+    const rotValRange = maxRot - minRot;
+    if (posValRange === 0 || rotValRange === 0) {
+      return;
+    }
     
     // Calculate proportional stroke width based on graph width
     // Aim for approximately 0.1% of graph width, with a minimum of 0.5px and maximum of 2px

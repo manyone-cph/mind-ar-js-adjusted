@@ -23,7 +23,7 @@ export class MatrixPostProcessor {
       scaleFilterBeta: config.scaleFilterBeta ?? 0.5,
       
       // Outlier detection settings
-      outlierDetectionEnabled: config.outlierDetectionEnabled !== false,
+      outlierDetectionEnabled: config.outlierDetectionEnabled === true,
       outlierMethod: config.outlierMethod ?? 'zScore', // 'zScore', 'modifiedZScore', 'iqr'
       outlierThreshold: config.outlierThreshold ?? 3.0, // Z-score threshold or IQR multiplier
       outlierHistorySize: config.outlierHistorySize ?? 30, // Frames to analyze
@@ -123,38 +123,26 @@ export class MatrixPostProcessor {
       return false;
     }
 
-    try {
-      // Create array with history + new delta (new delta is at the end)
-      const dataArray = [...history, delta];
-      let result;
+    // Create array with history + new delta (new delta is at the end)
+    const dataArray = [...history, delta];
+    let result;
 
-      switch (method) {
-        case 'zScore':
-        case 'zscore':
-          result = zscore(dataArray, threshold);
-          break;
-        case 'modifiedZScore':
-        case 'modifiedZscore':
-          result = modifiedZscore(dataArray, threshold);
-          break;
-        case 'iqr':
-          result = iqr(dataArray, threshold);
-          break;
-        default:
-          return false;
-      }
-
-      // Check if the last element (the new delta) is marked as outlier
-      return result[result.length - 1] === true;
-    } catch (e) {
-      // Fallback to simple threshold calculation
-      if (history.length === 0) return false;
-      const mean = history.reduce((a, b) => a + b, 0) / history.length;
-      const stdDev = Math.sqrt(
-        history.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / history.length
-      );
-      return Math.abs(delta - mean) > threshold * stdDev;
+    switch (method) {
+      case 'zScore':
+        result = zscore(dataArray, threshold);
+        break;
+      case 'modifiedZScore':
+        result = modifiedZscore(dataArray, threshold);
+        break;
+      case 'iqr':
+        result = iqr(dataArray, threshold);
+        break;
+      default:
+        throw new Error(`Invalid outlier method: ${method}. Must be 'zScore', 'modifiedZScore', or 'iqr'`);
     }
+
+    // Check if the last element (the new delta) is marked as outlier
+    return result[result.length - 1] === true;
   }
 
   /**
@@ -183,26 +171,66 @@ export class MatrixPostProcessor {
       return worldMatrix;
     }
 
-    // Calculate deltas for outlier detection
+    // Apply One Euro Filter to each component first
+    const filteredPos = state.positionFilter.filter(now, [
+      curr.position.x,
+      curr.position.y,
+      curr.position.z
+    ]);
+
+    const filteredQuat = state.quaternionFilter.filter(now, [
+      curr.rotation.w,
+      curr.rotation.x,
+      curr.rotation.y,
+      curr.rotation.z
+    ]);
+
+    const filteredScale = state.scaleFilter.filter(now, [
+      curr.scale.x,
+      curr.scale.y,
+      curr.scale.z
+    ]);
+
+    // Recompose filtered matrix
+    const filteredMatrix = this._composeMatrix(
+      new Vector3(filteredPos[0], filteredPos[1], filteredPos[2]),
+      new Quaternion(filteredQuat[1], filteredQuat[2], filteredQuat[3], filteredQuat[0]), // x, y, z, w
+      new Vector3(filteredScale[0], filteredScale[1], filteredScale[2])
+    );
+
+    if (!filteredMatrix) {
+      return worldMatrix;
+    }
+
+    // Outlier detection is disabled - skip all outlier-related processing
+    if (!this.config.outlierDetectionEnabled) {
+      state.lastWasSkipped = false;
+      state.smoothedMatrix = filteredMatrix;
+      state.previousMatrix = matrix;
+      return filteredMatrix.elements;
+    }
+
+    // Calculate deltas for outlier detection based on filtered results
     let positionDelta = 0;
     let rotationDelta = 0;
     let scaleDelta = 0;
 
-    if (state.previousMatrix) {
-      const prev = this._decomposeMatrix(state.previousMatrix);
-      if (prev) {
-        positionDelta = curr.position.distanceTo(prev.position);
-        rotationDelta = curr.rotation.angleTo(prev.rotation);
-        const prevScaleLength = prev.scale.length();
+    if (state.smoothedMatrix) {
+      const prevFiltered = this._decomposeMatrix(state.smoothedMatrix);
+      const currFiltered = this._decomposeMatrix(filteredMatrix);
+      if (prevFiltered && currFiltered) {
+        positionDelta = currFiltered.position.distanceTo(prevFiltered.position);
+        rotationDelta = currFiltered.rotation.angleTo(prevFiltered.rotation);
+        const prevScaleLength = prevFiltered.scale.length();
         scaleDelta = prevScaleLength > 0
-          ? Math.abs(curr.scale.length() - prevScaleLength) / prevScaleLength
+          ? Math.abs(currFiltered.scale.length() - prevScaleLength) / prevScaleLength
           : 0;
       }
     }
 
-    // Check for outliers before filtering
+    // Check for outliers based on filtered deltas
     let isOutlier = false;
-    if (this.config.outlierDetectionEnabled && state.previousMatrix) {
+    if (state.smoothedMatrix) {
       const posOutlier = this._isOutlier(
         positionDelta,
         state.positionDeltaHistory,
@@ -235,17 +263,15 @@ export class MatrixPostProcessor {
           });
         }
 
-        if (state.smoothedMatrix) {
-          return state.smoothedMatrix.elements;
-        }
-        return worldMatrix;
+        // Return previous filtered matrix (keep last good filtered result)
+        return state.smoothedMatrix.elements;
       } else {
         state.lastWasSkipped = false;
       }
     }
 
-    // Add to history
-    if (state.previousMatrix) {
+    // Add to history (only if not an outlier)
+    if (state.smoothedMatrix) {
       state.positionDeltaHistory.push(positionDelta);
       state.rotationDeltaHistory.push(rotationDelta);
       state.scaleDeltaHistory.push(scaleDelta);
@@ -258,38 +284,7 @@ export class MatrixPostProcessor {
       }
     }
 
-    // Apply One Euro Filter to each component
-    const filteredPos = state.positionFilter.filter(now, [
-      curr.position.x,
-      curr.position.y,
-      curr.position.z
-    ]);
-
-    const filteredQuat = state.quaternionFilter.filter(now, [
-      curr.rotation.w,
-      curr.rotation.x,
-      curr.rotation.y,
-      curr.rotation.z
-    ]);
-
-    const filteredScale = state.scaleFilter.filter(now, [
-      curr.scale.x,
-      curr.scale.y,
-      curr.scale.z
-    ]);
-
-    // Recompose matrix
-    const filteredMatrix = this._composeMatrix(
-      new Vector3(filteredPos[0], filteredPos[1], filteredPos[2]),
-      new Quaternion(filteredQuat[1], filteredQuat[2], filteredQuat[3], filteredQuat[0]), // x, y, z, w
-      new Vector3(filteredScale[0], filteredScale[1], filteredScale[2])
-    );
-
-    if (!filteredMatrix) {
-      return worldMatrix;
-    }
-
-    // Update state
+    // Update state with new filtered matrix
     state.smoothedMatrix = filteredMatrix;
     state.previousMatrix = matrix;
 
@@ -376,7 +371,10 @@ export class MatrixPostProcessor {
    */
   _logDebug(targetIndex, state, event, data = {}) {
     const now = performance.now();
-    const lastLogTime = this.lastDebugLogTime.get(targetIndex) || 0;
+    const lastLogTime = this.lastDebugLogTime.get(targetIndex);
+    if (lastLogTime === undefined) {
+      this.lastDebugLogTime.set(targetIndex, 0);
+    }
 
     const shouldLog = event === 'OUTLIER_DETECTED' ||
       (now - lastLogTime) >= this.config.debugLogInterval;

@@ -1,3 +1,47 @@
+# Code Change Guidelines
+
+## No Backward Compatibility
+
+**CRITICAL**: This project does NOT maintain backward compatibility. When making code changes:
+
+- **NEVER** add fallback logic or compatibility layers for old APIs
+- **NEVER** support multiple input formats or deprecated parameter styles
+- **NEVER** maintain old methods/functions alongside new ones
+- **ALWAYS** feel free to make breaking changes when improving APIs
+- **ALWAYS** require exact, deterministic input formats
+- **ALWAYS** remove old code paths completely when refactoring
+
+The codebase must be **100% deterministic** - it should accept exactly what it expects, nothing more, nothing less. Flexibility and backward compatibility add confusion and make the codebase harder to understand and maintain.
+
+**Bad Examples:**
+```javascript
+// Supporting both old and new parameter formats
+function process(data) {
+  if (typeof data === 'string') {
+    // old format
+    return processOld(data);
+  } else {
+    // new format
+    return processNew(data);
+  }
+}
+
+// Maintaining old method alongside new one
+class MyClass {
+  oldMethod() { /* deprecated */ }
+  newMethod() { /* use this instead */ }
+}
+```
+
+**Good Examples:**
+```javascript
+// Single, exact format required
+function process(data: ProcessData) {
+  // Process exactly what's expected
+  return processData(data);
+}
+```
+
 # Comment Style Guidelines
 
 ## Core Principles

@@ -51,8 +51,8 @@ export class VideoManager {
       }
 
       // Add resolution constraints if specified
-      const resolutionConstraints = getResolutionConstraints(this.resolution);
-      if (resolutionConstraints) {
+      if (this.resolution) {
+        const resolutionConstraints = getResolutionConstraints(this.resolution);
         // Merge resolution constraints into video constraints
         // Using 'ideal' allows the browser to adapt to portrait/landscape orientation
         constraints.video.width = resolutionConstraints.width;

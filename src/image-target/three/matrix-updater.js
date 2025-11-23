@@ -42,7 +42,7 @@ export class MatrixUpdater {
       
       // Check if frame was skipped by checking post-processor state
       const state = this.postProcessor._getTargetState(targetIndex);
-      wasSkipped = state.lastWasSkipped || false;
+      wasSkipped = state.lastWasSkipped;
     }
     
     // Add to visualizer if enabled

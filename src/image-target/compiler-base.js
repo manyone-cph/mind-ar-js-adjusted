@@ -91,9 +91,8 @@ class CompilerBase {
     const content = msgpack.decode(new Uint8Array(buffer));
     //console.log("import", content);
 
-    if (!content.v || content.v !== CURRENT_VERSION) {
-      console.error("Your compiled .mind might be outdated. Please recompile");
-      return [];
+    if (content.v !== CURRENT_VERSION) {
+      throw new Error(`Invalid .mind file version. Expected ${CURRENT_VERSION}, got ${content.v || 'undefined'}. Please recompile.`);
     }
     const { dataList } = content;
     this.data = [];

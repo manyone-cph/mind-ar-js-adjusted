@@ -345,7 +345,7 @@ class Controller {
 	    continue;
 	  }
 	  
-	  // For polling fallback, we need to check frame rate limiting here too
+	  // Check frame rate limiting
 	  if (this.targetFPS && this.frameInterval > 0) {
 	    const now = performance.now();
 	    const timeSinceLastFrame = now - this.lastFrameTime;

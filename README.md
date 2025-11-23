@@ -199,9 +199,8 @@ const mindarThree = new MindARThree({
 });
 ```
 
-**Resolution Parameter**: The `resolution` parameter allows you to specify the desired camera resolution using standard video resolution strings. Supported formats include:
+**Resolution Parameter**: The `resolution` parameter allows you to specify the desired camera resolution using standard video resolution strings. Supported formats:
 - `"144p"`, `"240p"`, `"360p"`, `"480p"`, `"720p"`, `"1080p"`, `"1440p"`, `"2160p"` (4K)
-- Numeric formats like `"720"` or `"720p"` are also accepted
 - The browser will automatically adapt to the closest available resolution
 - Works seamlessly in both landscape and portrait orientations
 - If not specified, the browser's default camera resolution will be used
@@ -219,12 +218,16 @@ await mindarThree.setResolution('1080p');  // Switch to 1080p
 // The AR session will automatically restart with the new resolution
 // All anchors and 3D objects are preserved during the restart
 
-// All configuration parameters can be updated at runtime without restarting:
-mindarThree.setFilterParams({ filterMinCF: 0.002, filterBeta: 1200, filterDCutOff: 0.001 });
-mindarThree.setWarmupTolerance(8);
-mindarThree.setMissTolerance(6);
-mindarThree.setMaxTrack(2);
-mindarThree.setTargetFPS(30);
+// All configuration parameters can be updated at runtime without restarting using the unified updateConfig() method:
+mindarThree.updateConfig({
+  filterMinCF: 0.002,
+  filterBeta: 1200,
+  filterDCutOff: 0.001,
+  warmupTolerance: 8,
+  missTolerance: 6,
+  maxTrack: 2,
+  targetFPS: 30
+});
 ```
 
 #### Methods
@@ -233,11 +236,8 @@ mindarThree.setTargetFPS(30);
 - `stop()`: Stop the AR session
 - `switchCamera()`: Switch between front and back cameras
 - `setResolution(resolution)`: Change camera resolution at runtime (e.g., `"360p"`, `"720p"`, `"1080p"`)
-- `setFilterParams({filterMinCF, filterBeta, filterDCutOff})`: Update filter parameters at runtime (see [Filter Configuration](#filter-configuration))
-- `setWarmupTolerance(tolerance)`: Update warmup tolerance at runtime (see [Tracking Stability](#tracking-stability))
-- `setMissTolerance(tolerance)`: Update miss tolerance at runtime (see [Tracking Stability](#tracking-stability))
-- `setMaxTrack(maxTrack)`: Update maximum tracking count at runtime
-- `setTargetFPS(fps)`: Update target frame rate at runtime
+- `updateConfig(config)`: Update configuration at runtime using unified API (see [Configuration Guide](#configuration-guide))
+  - Accepts a config object with: `filterMinCF`, `filterBeta`, `filterDCutOff`, `warmupTolerance`, `missTolerance`, `maxTrack`, `targetFPS`, `postProcessor`, `visualizer`, `performanceProfiling`
 - `getConfig()`: Get current configuration values
 - `addAnchor(targetIndex)`: Add a 3D anchor to a target
 - `addCSSAnchor(targetIndex)`: Add a CSS3D anchor to a target
@@ -278,9 +278,8 @@ const mindarThree = new MindARThree({
 });
 ```
 
-**Resolution Parameter**: The `resolution` parameter allows you to specify the desired camera resolution using standard video resolution strings. Supported formats include:
+**Resolution Parameter**: The `resolution` parameter allows you to specify the desired camera resolution using standard video resolution strings. Supported formats:
 - `"144p"`, `"240p"`, `"360p"`, `"480p"`, `"720p"`, `"1080p"`, `"1440p"`, `"2160p"` (4K)
-- Numeric formats like `"720"` or `"720p"` are also accepted
 - The browser will automatically adapt to the closest available resolution
 - Works seamlessly in both landscape and portrait orientations
 - If not specified, the browser's default camera resolution will be used
@@ -304,7 +303,7 @@ await mindarThree.setResolution('1080p');  // Switch to 1080p
 - `stop()`: Stop the AR session
 - `switchCamera()`: Switch between front and back cameras
 - `setResolution(resolution)`: Change camera resolution at runtime (e.g., `"360p"`, `"720p"`, `"1080p"`)
-- `setFilterParams({filterMinCF, filterBeta, filterDCutOff})`: Update filter parameters at runtime (see [Filter Configuration](#filter-configuration))
+- `updateConfig(config)`: Update configuration at runtime (see [Configuration Guide](#configuration-guide))
 - `getConfig()`: Get current configuration values
 - `addAnchor(index)`: Add a 3D anchor to face (index 0 for face)
 - `addFaceMesh()`: Add a face mesh for occlusion
@@ -366,14 +365,14 @@ await mindarThree.start();
 
 // Adjust at runtime based on performance
 // If tracking is jittery:
-mindarThree.setFilterParams({
+mindarThree.updateConfig({
   filterMinCF: 0.0005,  // More smoothing
   filterBeta: 800,      // Less aggressive adaptation
   filterDCutOff: 0.001  // Keep default
 });
 
 // If tracking is laggy:
-mindarThree.setFilterParams({
+mindarThree.updateConfig({
   filterMinCF: 0.005,   // Less smoothing
   filterBeta: 1500,     // More aggressive adaptation
   filterDCutOff: 0.001  // Keep default
@@ -419,12 +418,16 @@ await mindarThree.start();
 
 // Adjust for different scenarios
 // For fast-paced interactions:
-mindarThree.setWarmupTolerance(3);
-mindarThree.setMissTolerance(3);
+mindarThree.updateConfig({
+  warmupTolerance: 3,
+  missTolerance: 3
+});
 
 // For stable presentations:
-mindarThree.setWarmupTolerance(10);
-mindarThree.setMissTolerance(8);
+mindarThree.updateConfig({
+  warmupTolerance: 10,
+  missTolerance: 8
+});
 ```
 
 ### Multi-Target Tracking
@@ -446,7 +449,7 @@ const mindarThree = new MindARThree.Image.MindARThree({
 });
 
 // Change at runtime
-mindarThree.setMaxTrack(3);
+mindarThree.updateConfig({ maxTrack: 3 });
 ```
 
 ### Performance Tuning
@@ -467,8 +470,8 @@ const mindarThree = new MindARThree.Image.MindARThree({
 });
 
 // Adjust at runtime
-mindarThree.setTargetFPS(20);  // Lower for battery saving
-mindarThree.setTargetFPS(null); // Unlimited for best performance
+mindarThree.updateConfig({ targetFPS: 20 });  // Lower for battery saving
+mindarThree.updateConfig({ targetFPS: null }); // Unlimited for best performance
 ```
 
 ### Getting Current Configuration
@@ -486,7 +489,10 @@ console.log(config);
 //   missTolerance: 5,
 //   maxTrack: 1,
 //   targetFPS: null,
-//   controller: { ... }  // Detailed controller state
+//   postProcessor: { ... },  // Post-processor config (if enabled)
+//   visualizer: { ... },      // Visualizer config (if enabled)
+//   performanceProfiling: false,
+//   controller: { ... }       // Detailed controller state
 // }
 ```
 

@@ -157,20 +157,6 @@ export class MindARThree {
     }
   }
 
-  setTargetFPS(targetFPS) {
-    // Validate targetFPS
-    if (targetFPS !== null && (typeof targetFPS !== 'number' || targetFPS <= 0)) {
-      throw new Error('targetFPS must be a positive number or null (for unlimited)');
-    }
-
-    this.targetFPS = targetFPS;
-    
-    // Update controller if AR session is running
-    if (this.arSession && this.arSession.getController()) {
-      this.arSession.getController().setTargetFPS(targetFPS);
-    }
-  }
-
   pauseProcessing() {
     // Pause ML processing while keeping video running
     if (this.arSession && this.arSession.getController()) {
@@ -193,67 +179,169 @@ export class MindARThree {
     return false;
   }
 
-  enablePerformanceProfiling(enabled = true) {
-    if (this.arSession && this.arSession.getController()) {
-      this.arSession.getController().debugMode = enabled;
+  /**
+   * Unified configuration update method
+   * @param {Object} config - Configuration object with the following structure:
+   *   {
+   *     // Controller/Tracking settings
+   *     filterMinCF?: number,
+   *     filterBeta?: number,
+   *     filterDCutOff?: number,
+   *     warmupTolerance?: number,
+   *     missTolerance?: number,
+   *     maxTrack?: number,
+   *     targetFPS?: number | null,
+   *     
+   *     // Post-processor settings
+   *     postProcessor?: {
+   *       enabled?: boolean | null,  // null = disable, {} = enable with defaults, or config object
+   *       outlierDetectionEnabled?: boolean,
+   *       filterMinCF?: number,
+   *       filterBeta?: number,
+   *       filterDCutOff?: number,
+   *       scaleFilterMinCF?: number,
+   *       scaleFilterBeta?: number,
+   *       outlierMethod?: 'zScore' | 'modifiedZScore' | 'iqr',
+   *       outlierThreshold?: number,
+   *       outlierHistorySize?: number,
+   *       minHistoryForOutlierDetection?: number,
+   *       debugMode?: boolean,
+   *       debugLogInterval?: number
+   *     },
+   *     
+   *     // Visualizer settings
+   *     visualizer?: {
+   *       enabled?: boolean
+   *     },
+   *     
+   *     // Performance profiling
+   *     performanceProfiling?: boolean
+   *   }
+   */
+  updateConfig(config) {
+    if (!config || typeof config !== 'object') {
+      throw new Error('updateConfig requires a configuration object');
     }
-    // Also enable in detector if available
-    if (this.arSession && this.arSession.getController()) {
-      const controller = this.arSession.getController();
-      if (controller.cropDetector && controller.cropDetector.detector) {
-        controller.cropDetector.detector.debugMode = enabled;
+
+    const controller = this.arSession?.getController();
+
+    // Update controller/tracking settings
+    if (config.filterMinCF !== undefined || config.filterBeta !== undefined || config.filterDCutOff !== undefined) {
+      if (config.filterMinCF !== undefined) {
+        this.filterMinCF = config.filterMinCF;
       }
-      if (controller.tracker) {
-        controller.tracker.debugMode = enabled;
+      if (config.filterBeta !== undefined) {
+        this.filterBeta = config.filterBeta;
+      }
+      if (config.filterDCutOff !== undefined) {
+        this.filterDCutOff = config.filterDCutOff;
+      }
+
+      if (controller) {
+        controller.setFilterParams({
+          filterMinCF: config.filterMinCF,
+          filterBeta: config.filterBeta,
+          filterDCutOff: config.filterDCutOff
+        });
       }
     }
-  }
 
-  setFilterParams({filterMinCF, filterBeta, filterDCutOff}) {
-    // Update stored values
-    if (filterMinCF !== undefined) {
-      this.filterMinCF = filterMinCF;
-    }
-    if (filterBeta !== undefined) {
-      this.filterBeta = filterBeta;
-    }
-    if (filterDCutOff !== undefined) {
-      this.filterDCutOff = filterDCutOff;
+    if (config.warmupTolerance !== undefined) {
+      this.warmupTolerance = config.warmupTolerance;
+      if (controller) {
+        controller.setWarmupTolerance(config.warmupTolerance);
+      }
     }
 
-    // Update controller if AR session is running
-    if (this.arSession && this.arSession.getController()) {
-      this.arSession.getController().setFilterParams({filterMinCF, filterBeta, filterDCutOff});
+    if (config.missTolerance !== undefined) {
+      this.missTolerance = config.missTolerance;
+      if (controller) {
+        controller.setMissTolerance(config.missTolerance);
+      }
     }
-  }
 
-  setWarmupTolerance(warmupTolerance) {
-    // Update stored value
-    this.warmupTolerance = warmupTolerance;
-
-    // Update controller if AR session is running
-    if (this.arSession && this.arSession.getController()) {
-      this.arSession.getController().setWarmupTolerance(warmupTolerance);
+    if (config.maxTrack !== undefined) {
+      this.maxTrack = config.maxTrack;
+      if (controller) {
+        controller.setMaxTrack(config.maxTrack);
+      }
     }
-  }
 
-  setMissTolerance(missTolerance) {
-    // Update stored value
-    this.missTolerance = missTolerance;
-
-    // Update controller if AR session is running
-    if (this.arSession && this.arSession.getController()) {
-      this.arSession.getController().setMissTolerance(missTolerance);
+    if (config.targetFPS !== undefined) {
+      if (config.targetFPS !== null && (typeof config.targetFPS !== 'number' || config.targetFPS <= 0)) {
+        throw new Error('targetFPS must be a positive number or null (for unlimited)');
+      }
+      this.targetFPS = config.targetFPS;
+      if (controller) {
+        controller.setTargetFPS(config.targetFPS);
+      }
     }
-  }
 
-  setMaxTrack(maxTrack) {
-    // Update stored value
-    this.maxTrack = maxTrack;
+    // Update post-processor settings
+    if (config.postProcessor !== undefined) {
+      const ppConfig = config.postProcessor;
+      
+      if (ppConfig === null) {
+        // Disable post-processor
+        if (this.matrixUpdater && this.matrixUpdater.postProcessor) {
+          this.matrixUpdater.postProcessor.updateConfig({ enabled: false });
+        }
+        this.postProcessorConfig = null;
+      } else if (typeof ppConfig === 'object') {
+        // Update or enable post-processor
+        if (this.postProcessorConfig === null) {
+          // Was disabled, now enabling
+          this.postProcessorConfig = ppConfig;
+        } else {
+          // Was enabled, merge config
+          this.postProcessorConfig = { ...this.postProcessorConfig, ...ppConfig };
+        }
+        
+        if (this.matrixUpdater) {
+          this.matrixUpdater.updatePostProcessorConfig(ppConfig);
+        } else {
+          console.warn('[MindAR] matrixUpdater not available when trying to update post-processor config');
+        }
+      }
+    }
 
-    // Update controller if AR session is running
-    if (this.arSession && this.arSession.getController()) {
-      this.arSession.getController().setMaxTrack(maxTrack);
+    // Update visualizer settings
+    if (config.visualizer !== undefined) {
+      if (config.visualizer === null) {
+        // Disable visualizer
+        this.visualizerConfig = null;
+        if (this.matrixUpdater) {
+          this.matrixUpdater.setVisualizerEnabled(false);
+        }
+      } else if (typeof config.visualizer === 'object') {
+        // Update or enable visualizer
+        if (this.visualizerConfig === null) {
+          // Was disabled, now enabling
+          this.visualizerConfig = config.visualizer;
+        } else {
+          // Was enabled, merge config
+          this.visualizerConfig = { ...this.visualizerConfig, ...config.visualizer };
+        }
+        
+        if (this.matrixUpdater) {
+          if (config.visualizer.enabled !== undefined) {
+            this.matrixUpdater.setVisualizerEnabled(config.visualizer.enabled);
+          }
+        }
+      }
+    }
+
+    // Update performance profiling
+    if (config.performanceProfiling !== undefined) {
+      if (controller) {
+        controller.debugMode = config.performanceProfiling;
+        if (controller.cropDetector && controller.cropDetector.detector) {
+          controller.cropDetector.detector.debugMode = config.performanceProfiling;
+        }
+        if (controller.tracker) {
+          controller.tracker.debugMode = config.performanceProfiling;
+        }
+      }
     }
   }
 
@@ -266,7 +354,12 @@ export class MindARThree {
       missTolerance: this.missTolerance,
       maxTrack: this.maxTrack,
       targetFPS: this.targetFPS,
-      postProcessorConfig: this.postProcessorConfig
+      postProcessor: this.postProcessorConfig,
+      visualizer: this.visualizerConfig ? {
+        ...this.visualizerConfig,
+        enabled: this.matrixUpdater?.visualizer?.config?.enabled ?? false
+      } : null,
+      performanceProfiling: this.arSession?.getController()?.debugMode ?? false
     };
 
     // Include controller config if AR session is running
@@ -278,37 +371,6 @@ export class MindARThree {
     }
 
     return config;
-  }
-
-  /**
-   * Update post-processor configuration
-   * @param {Object} config - Partial configuration object to update, or null to disable
-   */
-  setPostProcessorConfig(config) {
-    if (config === null) {
-      // Disable post-processor by setting enabled: false
-      if (this.matrixUpdater && this.matrixUpdater.postProcessor) {
-        this.matrixUpdater.postProcessor.updateConfig({ enabled: false });
-      }
-      this.postProcessorConfig = null;
-    } else {
-      // Update or enable post-processor
-      if (this.postProcessorConfig === null) {
-        // Was disabled, now enabling with provided config
-        this.postProcessorConfig = config;
-      } else {
-        // Was enabled, merge config
-        this.postProcessorConfig = { ...this.postProcessorConfig, ...config };
-      }
-      
-      if (this.matrixUpdater) {
-        // Pass the merged config to ensure all settings are updated
-        // The updateConfig method will merge this into the existing config
-        this.matrixUpdater.updatePostProcessorConfig(config);
-      } else {
-        console.warn('[MindAR] matrixUpdater not available when trying to update post-processor config');
-      }
-    }
   }
 
   /**
@@ -331,30 +393,6 @@ export class MindARThree {
       return this.matrixUpdater.getPostProcessorStateInfo(targetIndex);
     }
     return null;
-  }
-
-  /**
-   * Enable/disable visualizer
-   * @param {boolean} enabled - Whether to enable the visualizer
-   */
-  setVisualizerEnabled(enabled) {
-    if (this.matrixUpdater) {
-      this.matrixUpdater.setVisualizerEnabled(enabled);
-    }
-  }
-
-  /**
-   * Enable/disable post-processor debug logging
-   * @param {boolean} enabled - Whether to enable debug logging
-   * @param {number} logInterval - Milliseconds between logs (default: 1000)
-   */
-  setPostProcessorDebugMode(enabled, logInterval = 1000) {
-    if (this.matrixUpdater && this.matrixUpdater.postProcessor) {
-      this.matrixUpdater.postProcessor.updateConfig({
-        debugMode: enabled,
-        debugLogInterval: logInterval
-      });
-    }
   }
 
   async _startAR() {

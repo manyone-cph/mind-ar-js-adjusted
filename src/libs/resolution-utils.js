@@ -1,13 +1,13 @@
 /**
- * Converts resolution strings like "360p", "720p", "1080p" to video constraints
- * that work in both landscape and portrait modes.
+ * Converts resolution strings to video constraints
  * 
  * @param {string} resolution - Resolution string (e.g., "360p", "720p", "1080p")
- * @returns {Object|null} - Video constraints object with width and height, or null if invalid
+ * @returns {Object} - Video constraints object with width and height
+ * @throws {Error} - If resolution format is invalid
  */
 export function getResolutionConstraints(resolution) {
-  if (!resolution) {
-    return null;
+  if (!resolution || typeof resolution !== 'string') {
+    throw new Error('Resolution must be a non-empty string');
   }
 
   // Normalize the resolution string (remove spaces, convert to lowercase)
@@ -26,25 +26,10 @@ export function getResolutionConstraints(resolution) {
     '2160p': { width: { ideal: 3840 }, height: { ideal: 2160 } }, // 4K
   };
 
-  // Check if it's a direct match
   if (resolutionMap[normalized]) {
     return resolutionMap[normalized];
   }
 
-  // Try to extract number from strings like "720p", "1080p", etc.
-  const match = normalized.match(/(\d+)p?/);
-  if (match) {
-    const height = parseInt(match[1], 10);
-    // Calculate width based on 16:9 aspect ratio
-    const width = Math.round(height * 16 / 9);
-    return {
-      width: { ideal: width },
-      height: { ideal: height }
-    };
-  }
-
-  // If no match, return null (will use default browser resolution)
-  console.warn(`Unknown resolution format: ${resolution}. Using default camera resolution.`);
-  return null;
+  throw new Error(`Invalid resolution format: "${resolution}". Must be one of: ${Object.keys(resolutionMap).join(', ')}`);
 }
 
