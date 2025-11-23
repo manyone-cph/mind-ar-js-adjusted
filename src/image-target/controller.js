@@ -1,81 +1,79 @@
-import {memory,nextFrame} from '@tensorflow/tfjs';
+import {memory, nextFrame} from '@tensorflow/tfjs';
 
-const tf = {memory,nextFrame};
-import ControllerWorker  from "./controller.worker.js?worker&inline";
+const tf = {memory, nextFrame};
 import {Tracker} from './tracker/tracker.js';
 import {CropDetector} from './detector/crop-detector.js';
 import {Compiler} from './compiler.js';
 import {InputLoader} from './input-loader.js';
-import {PerformanceManager} from './performance-manager.js';
-
-const DEFAULT_FILTER_CUTOFF = 0.001; // 1Hz. time period in milliseconds
-const DEFAULT_FILTER_BETA = 1000;
-const DEFAULT_FILTER_DCUTOFF = 0.001; // 1Hz. derivative cutoff
-const DEFAULT_WARMUP_TOLERANCE = 5;
-const DEFAULT_MISS_TOLERANCE = 5;
+import {PerformanceManager} from './performance/performance-manager.js';
+import {WorkerManager} from './workers/worker-manager.js';
+import {TrackingStateManager} from './core/tracking-state-manager.js';
+import {FrameProcessor} from './core/frame-processor.js';
+import {
+  DEFAULT_FILTER_CUTOFF,
+  DEFAULT_FILTER_BETA,
+  DEFAULT_FILTER_DCUTOFF,
+  DEFAULT_WARMUP_TOLERANCE,
+  DEFAULT_MISS_TOLERANCE
+} from './config/defaults.js';
+import {
+  validateTargetFPS,
+  validateFilterParams,
+  validateWarmupTolerance,
+  validateMissTolerance,
+  validateMaxTrack
+} from './config/validators.js';
+import {createProjectionTransform, createProjectionMatrix} from './math/projection.js';
+import {getRotatedZ90Matrix, glModelViewMatrix} from './math/matrix-transform.js';
 
 class Controller {
-  constructor({inputWidth, inputHeight, onUpdate=null, debugMode=false, maxTrack=1, 
-    warmupTolerance=null, missTolerance=null, filterMinCF=null, filterBeta=null, filterDCutOff=null, targetFPS=null}) {
-
+  constructor({
+    inputWidth,
+    inputHeight,
+    onUpdate = null,
+    debugMode = false,
+    maxTrack = 1,
+    warmupTolerance = null,
+    missTolerance = null,
+    filterMinCF = null,
+    filterBeta = null,
+    filterDCutOff = null,
+    targetFPS = null
+  }) {
     this.inputWidth = inputWidth;
     this.inputHeight = inputHeight;
     this.maxTrack = maxTrack;
-    this.filterMinCF = filterMinCF === null? DEFAULT_FILTER_CUTOFF: filterMinCF;
-    this.filterBeta = filterBeta === null? DEFAULT_FILTER_BETA: filterBeta;
-    this.filterDCutOff = filterDCutOff === null? DEFAULT_FILTER_DCUTOFF: filterDCutOff;
-    this.warmupTolerance = warmupTolerance === null? DEFAULT_WARMUP_TOLERANCE: warmupTolerance;
-    this.missTolerance = missTolerance === null? DEFAULT_MISS_TOLERANCE: missTolerance;
+    this.filterMinCF = filterMinCF === null ? DEFAULT_FILTER_CUTOFF : filterMinCF;
+    this.filterBeta = filterBeta === null ? DEFAULT_FILTER_BETA : filterBeta;
+    this.filterDCutOff = filterDCutOff === null ? DEFAULT_FILTER_DCUTOFF : filterDCutOff;
+    this.warmupTolerance = warmupTolerance === null ? DEFAULT_WARMUP_TOLERANCE : warmupTolerance;
+    this.missTolerance = missTolerance === null ? DEFAULT_MISS_TOLERANCE : missTolerance;
     this.targetFPS = targetFPS;
-    this.frameInterval = targetFPS ? (1000 / targetFPS) : 0;
-    this.lastFrameTime = 0;
+    this.onUpdate = onUpdate;
+    this.debugMode = debugMode;
+
     this.cropDetector = new CropDetector(this.inputWidth, this.inputHeight, debugMode);
     this.inputLoader = new InputLoader(this.inputWidth, this.inputHeight);
     this.markerDimensions = null;
-    this.onUpdate = onUpdate;
-    this.debugMode = debugMode;
-    this.processingVideo = false;
-    this.processingPaused = false; // Pause flag for troubleshooting
-    this.interestedTargetIndex = -1;
-    this.trackingStates = [];
-    
+
+    this.projectionTransform = createProjectionTransform(this.inputWidth, this.inputHeight);
+    this.projectionMatrix = createProjectionMatrix({
+      projectionTransform: this.projectionTransform,
+      width: this.inputWidth,
+      height: this.inputHeight
+    });
+
     this.performanceManager = new PerformanceManager({
       targetFrameTime: targetFPS ? (1000 / targetFPS) : 33.33,
       minFrameTime: 16.67
     });
 
-    const near = 10;
-    const far = 100000;
-    const fovy = 45.0 * Math.PI / 180; // 45 in radian. field of view vertical
-    const f = (this.inputHeight/2) / Math.tan(fovy/2);
-    //     [fx  s cx]
-    // K = [ 0 fx cy]
-    //     [ 0  0  1]
-    this.projectionTransform = [
-      [f, 0, this.inputWidth / 2],
-      [0, f, this.inputHeight / 2],
-      [0, 0, 1]
-    ];
-
-    this.projectionMatrix = this._glProjectionMatrix({
-      projectionTransform: this.projectionTransform,
-      width: this.inputWidth,
-      height: this.inputHeight,
-      near: near,
-      far: far,
-    });
-
-    this.worker = new ControllerWorker()//new Worker(new URL('./controller.worker.js', import.meta.url));
-    this.workerMatchDone = null;
-    this.workerTrackDone = null;
-    this.worker.onmessage = (e) => {
-      if (e.data.type === 'matchDone' && this.workerMatchDone !== null) {
-        this.workerMatchDone(e.data);
-      }
-      if (e.data.type === 'trackUpdateDone' && this.workerTrackDone !== null) {
-        this.workerTrackDone(e.data);
-      }
-    }
+    this.workerManager = new WorkerManager();
+    this.trackingStateManager = null;
+    this.frameProcessor = null;
+    this.tracker = null;
+    this.processingVideo = false;
+    this.interestedTargetIndex = -1;
   }
 
   showTFStats() {
@@ -83,13 +81,10 @@ class Controller {
     console.table(tf.memory());
   }
 
-  addImageTargets(fileURL) {
-    return new Promise(async (resolve, reject) => {
-      const content = await fetch(fileURL);
-      const buffer = await content.arrayBuffer();
-      const result = this.addImageTargetsFromBuffer(buffer);
-      resolve(result);
-    });
+  async addImageTargets(fileURL) {
+    const content = await fetch(fileURL);
+    const buffer = await content.arrayBuffer();
+    return this.addImageTargetsFromBuffer(buffer);
   }
 
   addImageTargetsFromBuffer(buffer) {
@@ -98,7 +93,6 @@ class Controller {
 
     const trackingDataList = [];
     const matchingDataList = [];
-    const imageListList = [];
     const dimensions = [];
     for (let i = 0; i < dataList.length; i++) {
       matchingDataList.push(dataList[i].matchingData);
@@ -106,38 +100,63 @@ class Controller {
       dimensions.push([dataList[i].targetImage.width, dataList[i].targetImage.height]);
     }
 
-    this.tracker = new Tracker(dimensions, trackingDataList, this.projectionTransform, this.inputWidth, this.inputHeight, this.debugMode);
-    
+    this.markerDimensions = dimensions;
+    this.tracker = new Tracker(
+      dimensions,
+      trackingDataList,
+      this.projectionTransform,
+      this.inputWidth,
+      this.inputHeight,
+      this.debugMode
+    );
+
     const quality = this.performanceManager.getQuality();
     this.tracker.setQuality(quality);
     this.cropDetector.detector.setQuality(quality);
 
-    this.worker.postMessage({
-      type: 'setup',
+    this.trackingStateManager = new TrackingStateManager(dimensions);
+
+    this.workerManager.setup({
       inputWidth: this.inputWidth,
       inputHeight: this.inputHeight,
       projectionTransform: this.projectionTransform,
       debugMode: this.debugMode,
-      matchingDataList,
+      matchingDataList
     });
 
-    this.markerDimensions = dimensions;
+    this.frameProcessor = new FrameProcessor({
+      inputLoader: this.inputLoader,
+      cropDetector: this.cropDetector,
+      tracker: this.tracker,
+      workerManager: this.workerManager,
+      trackingStateManager: this.trackingStateManager,
+      performanceManager: this.performanceManager,
+      onUpdate: this.onUpdate,
+      debugMode: this.debugMode,
+      maxTrack: this.maxTrack,
+      warmupTolerance: this.warmupTolerance,
+      missTolerance: this.missTolerance,
+      targetFPS: this.targetFPS,
+      markerDimensions: this.markerDimensions,
+      getRotatedZ90Matrix,
+      glModelViewMatrix: (modelViewTransform, targetHeight) => 
+        glModelViewMatrix(modelViewTransform, targetHeight)
+    });
 
-    return {dimensions: dimensions, matchingDataList, trackingDataList};
+    return {dimensions, matchingDataList, trackingDataList};
   }
 
   dispose() {
     this.stopProcessVideo();
-    this.worker.postMessage({
-      type: "dispose"
-    });
+    this.workerManager.dispose();
   }
 
-  // warm up gpu - build kernels is slow
   dummyRun(input) {
     const inputT = this.inputLoader.loadInput(input);
     this.cropDetector.detect(inputT);
-    this.tracker.dummyRun(inputT);
+    if (this.tracker) {
+      this.tracker.dummyRun(inputT);
+    }
     inputT.dispose();
   }
 
@@ -145,247 +164,57 @@ class Controller {
     return this.projectionMatrix;
   }
 
-  getRotatedZ90Matrix(m) { // rotate 90 degree along z-axis
-    // rotation matrix
-    // |  0  -1  0  0 |
-    // |  1   0  0  0 |
-    // |  0   0  1  0 |
-    // |  0   0  0  1 |
-    const rotatedMatrix = [
-      -m[1], m[0], m[2], m[3],
-      -m[5], m[4], m[6], m[7],
-      -m[9], m[8], m[10], m[11],
-      -m[13], m[12], m[14], m[15]
-    ];
-    return rotatedMatrix;
+  getRotatedZ90Matrix(m) {
+    return getRotatedZ90Matrix(m);
   }
 
   getWorldMatrix(modelViewTransform, targetIndex) {
-    return this._glModelViewMatrix(modelViewTransform, targetIndex);
-  }
-
-  async _detectAndMatch(inputT, targetIndexes) {
-    const detectStart = performance.now();
-    const {featurePoints} = this.cropDetector.detectMoving(inputT);
-    const detectTime = performance.now() - detectStart;
-    
-    const matchStart = performance.now();
-    const {targetIndex: matchedTargetIndex, modelViewTransform} = await this._workerMatch(featurePoints, targetIndexes);
-    const matchTime = performance.now() - matchStart;
-    
-    if (this.debugMode) {
-      console.log(`Detection: ${detectTime.toFixed(2)}ms, Matching: ${matchTime.toFixed(2)}ms`);
-    }
-    
-    return {targetIndex: matchedTargetIndex, modelViewTransform}
-  }
-  async _trackAndUpdate(inputT, lastModelViewTransform, targetIndex) {
-    const {worldCoords, screenCoords} = this.tracker.track(inputT, lastModelViewTransform, targetIndex);
-    if (worldCoords.length < 4) return null;
-    const modelViewTransform = await this._workerTrackUpdate(lastModelViewTransform, {worldCoords, screenCoords});
-    return modelViewTransform;
+    return glModelViewMatrix(modelViewTransform, this.markerDimensions[targetIndex][1]);
   }
 
   processVideo(input) {
     if (this.processingVideo) return;
-
-    this.processingVideo = true;
-
-    this.trackingStates = [];
-    for (let i = 0; i < this.markerDimensions.length; i++) {
-      this.trackingStates.push({
-	showing: false,
-	isTracking: false,
-	currentModelViewTransform: null,
-	trackCount: 0,
-	trackMiss: 0
-      });
+    if (!this.frameProcessor) {
+      throw new Error('Must call addImageTargets before processVideo');
     }
 
-    // Extract frame processing logic into reusable function
-    const processFrame = async () => {
-      if (!this.processingVideo) return;
+    this.processingVideo = true;
+    this.trackingStateManager.reset();
 
-      // Pause check: skip processing if paused (video continues playing)
-      // The callback will still schedule the next frame to maintain the loop
-      if (this.processingPaused) {
-        return;
-      }
-
-      const frameStartTime = performance.now();
-
-      // Frame rate limiting: skip frame if not enough time has passed
-      if (this.targetFPS && this.frameInterval > 0) {
-        const now = performance.now();
-        const timeSinceLastFrame = now - this.lastFrameTime;
-        
-        if (timeSinceLastFrame < this.frameInterval) {
-          // Skip this frame, schedule next check
-          return;
-        }
-        
-        this.lastFrameTime = now;
-      }
-
-      const inputLoadStart = performance.now();
-      const inputT = this.inputLoader.loadInput(input);
-      const inputLoadTime = performance.now() - inputLoadStart;
-
-      const nTracking = this.trackingStates.reduce((acc, s) => {
-	return acc + (!!s.isTracking? 1: 0);
-      }, 0);
-
-      // detect and match only if less then maxTrack
-      let detectionTime = 0;
-      let matchingTime = 0;
-      if (nTracking < this.maxTrack) {
-
-	const matchingIndexes = [];
-	for (let i = 0; i < this.trackingStates.length; i++) {
-	  const trackingState = this.trackingStates[i];
-	  if (trackingState.isTracking === true) continue;
-	  if (this.interestedTargetIndex !== -1 && this.interestedTargetIndex !== i) continue;
-
-	  matchingIndexes.push(i);
-	}
-
-	const detectStart = performance.now();
-	const {targetIndex: matchedTargetIndex, modelViewTransform} = await this._detectAndMatch(inputT, matchingIndexes);
-	detectionTime = performance.now() - detectStart;
-	matchingTime = detectionTime; // Matching is part of _detectAndMatch
-
-	if (matchedTargetIndex !== -1) {
-	  this.trackingStates[matchedTargetIndex].isTracking = true;
-	  this.trackingStates[matchedTargetIndex].currentModelViewTransform = modelViewTransform;
-	}
-      }
-
-      // tracking update
-      let trackingTime = 0;
-      for (let i = 0; i < this.trackingStates.length; i++) {
-	const trackingState = this.trackingStates[i];
-
-	if (trackingState.isTracking) {
-	  const trackStart = performance.now();
-	  let modelViewTransform = await this._trackAndUpdate(inputT, trackingState.currentModelViewTransform, i);
-	  trackingTime += performance.now() - trackStart;
-	  if (modelViewTransform === null) {
-	    trackingState.isTracking = false;
-	  } else {
-	    trackingState.currentModelViewTransform = modelViewTransform;
-	  }
-	}
-
-	// if not showing, then show it once it reaches warmup number of frames
-	if (!trackingState.showing) {
-	  if (trackingState.isTracking) {
-	    trackingState.trackMiss = 0;
-	    trackingState.trackCount += 1;
-	    if (trackingState.trackCount > this.warmupTolerance) {
-	      trackingState.showing = true;
-	      trackingState.trackingMatrix = null;
-	    }
-	  }
-	}
-	
-	// if showing, then count miss, and hide it when reaches tolerance
-	if (trackingState.showing) {
-	  if (!trackingState.isTracking) {
-	    trackingState.trackCount = 0;
-	    trackingState.trackMiss += 1;
-
-	    if (trackingState.trackMiss > this.missTolerance) {
-	      trackingState.showing = false;
-	      trackingState.trackingMatrix = null;
-	      this.onUpdate && this.onUpdate({type: 'updateMatrix', targetIndex: i, worldMatrix: null});
-	    }
-	  } else {
-	    trackingState.trackMiss = 0;
-	  }
-	}
-	
-	// if showing, then call onUpdate, with world matrix
-	if (trackingState.showing) {
-	  const worldMatrix = this._glModelViewMatrix(trackingState.currentModelViewTransform, i);
-
-      const isInputRotated = input.width === this.inputHeight && input.height === this.inputWidth;
-      const finalMatrix = isInputRotated 
-        ? this.getRotatedZ90Matrix(worldMatrix)
-        : worldMatrix.slice();
-
-	  this.onUpdate && this.onUpdate({type: 'updateMatrix', targetIndex: i, worldMatrix: finalMatrix});
-	}
-      }
-
-      inputT.dispose();
-      
-      const totalFrameTime = performance.now() - frameStartTime;
-      
-      const oldQuality = this.performanceManager.getQuality();
-      const qualityChanged = this.performanceManager.recordFrameTime(totalFrameTime);
-      const newQuality = this.performanceManager.getQuality();
-      
-      if (qualityChanged && this.tracker && this.cropDetector) {
-        this.tracker.setQuality(newQuality);
-        this.cropDetector.detector.setQuality(newQuality);
-      }
-      
-      if (this.debugMode) {
-        const breakdown = {
-          total: totalFrameTime.toFixed(2),
-          inputLoad: inputLoadTime.toFixed(2),
-          detection: detectionTime.toFixed(2),
-          tracking: trackingTime.toFixed(2),
-          other: (totalFrameTime - inputLoadTime - detectionTime - trackingTime).toFixed(2)
-        };
-        const perfStats = this.performanceManager.getStats();
-        if (perfStats) {
-          breakdown.quality = perfStats.quality;
-          breakdown.qualityLevel = perfStats.qualityLevel;
-          breakdown.avgFPS = perfStats.currentFPS;
-        }
-        console.log('Frame timing:', breakdown);
-      }
-      
-      this.onUpdate && this.onUpdate({type: 'processDone'});
-    };
-
-      if (input && typeof input.requestVideoFrameCallback === 'function') {
+    if (input && typeof input.requestVideoFrameCallback === 'function') {
       const scheduleNextFrame = (now, metadata) => {
-	processFrame().then(() => {
-	  if (this.processingVideo) {
-	    input.requestVideoFrameCallback(scheduleNextFrame);
-	  }
-	});
+        this.frameProcessor.processFrame(input).then(() => {
+          if (this.processingVideo) {
+            input.requestVideoFrameCallback(scheduleNextFrame);
+          }
+        });
       };
       input.requestVideoFrameCallback(scheduleNextFrame);
     } else {
-      const startProcessing = async() => {
-	while (true) {
-	  if (!this.processingVideo) break;
-	  
-	  // Pause check: skip processing if paused (video continues playing)
-	  if (this.processingPaused) {
-	    await tf.nextFrame();
-	    continue;
-	  }
-	  
-	  // Check frame rate limiting
-	  if (this.targetFPS && this.frameInterval > 0) {
-	    const now = performance.now();
-	    const timeSinceLastFrame = now - this.lastFrameTime;
-	    
-	    if (timeSinceLastFrame < this.frameInterval) {
-	      await tf.nextFrame();
-	      continue;
-	    }
-	    
-	    this.lastFrameTime = now;
-	  }
-	  
-	  await processFrame();
-	  await tf.nextFrame();
-	}
+      const startProcessing = async () => {
+        while (true) {
+          if (!this.processingVideo) break;
+
+          if (this.frameProcessor.processingPaused) {
+            await tf.nextFrame();
+            continue;
+          }
+
+          if (this.targetFPS && this.frameProcessor.frameInterval > 0) {
+            const now = performance.now();
+            const timeSinceLastFrame = now - this.frameProcessor.lastFrameTime;
+
+            if (timeSinceLastFrame < this.frameProcessor.frameInterval) {
+              await tf.nextFrame();
+              continue;
+            }
+
+            this.frameProcessor.lastFrameTime = now;
+          }
+
+          await this.frameProcessor.processFrame(input);
+          await tf.nextFrame();
+        }
       };
       startProcessing();
     }
@@ -393,48 +222,43 @@ class Controller {
 
   stopProcessVideo() {
     this.processingVideo = false;
-    this.processingPaused = false; // Reset pause state when stopping
-    this.lastFrameTime = 0; // Reset frame timing when stopping
+    if (this.frameProcessor) {
+      this.frameProcessor.setPaused(false);
+      this.frameProcessor.resetFrameTiming();
+    }
   }
 
   pauseProcessing() {
-    this.processingPaused = true;
+    if (this.frameProcessor) {
+      this.frameProcessor.setPaused(true);
+    }
   }
 
   resumeProcessing() {
-    this.processingPaused = false;
-    // Reset frame timing to avoid immediate frame skip after resume
-    this.lastFrameTime = 0;
+    if (this.frameProcessor) {
+      this.frameProcessor.setPaused(false);
+      this.frameProcessor.resetFrameTiming();
+    }
   }
 
   isProcessingPaused() {
-    return this.processingPaused;
+    return this.frameProcessor ? this.frameProcessor.processingPaused : false;
   }
 
   setTargetFPS(targetFPS) {
-    // Validate targetFPS
-    if (targetFPS !== null && (typeof targetFPS !== 'number' || targetFPS <= 0)) {
-      throw new Error('targetFPS must be a positive number or null (for unlimited)');
-    }
-
+    validateTargetFPS(targetFPS);
     this.targetFPS = targetFPS;
-    this.frameInterval = targetFPS ? (1000 / targetFPS) : 0;
-    this.lastFrameTime = 0; // Reset timing when changing FPS
+    if (this.frameProcessor) {
+      this.frameProcessor.setTargetFPS(targetFPS);
+    }
+    if (this.performanceManager) {
+      this.performanceManager.config.targetFrameTime = targetFPS ? (1000 / targetFPS) : 33.33;
+    }
   }
 
   setFilterParams({filterMinCF, filterBeta, filterDCutOff}) {
-    // Validate parameters
-    if (filterMinCF !== undefined && (typeof filterMinCF !== 'number' || filterMinCF < 0)) {
-      throw new Error('filterMinCF must be a non-negative number');
-    }
-    if (filterBeta !== undefined && (typeof filterBeta !== 'number' || filterBeta < 0)) {
-      throw new Error('filterBeta must be a non-negative number');
-    }
-    if (filterDCutOff !== undefined && (typeof filterDCutOff !== 'number' || filterDCutOff < 0)) {
-      throw new Error('filterDCutOff must be a non-negative number');
-    }
+    validateFilterParams({filterMinCF, filterBeta, filterDCutOff});
 
-    // Update stored values
     if (filterMinCF !== undefined) {
       this.filterMinCF = filterMinCF;
     }
@@ -444,34 +268,30 @@ class Controller {
     if (filterDCutOff !== undefined) {
       this.filterDCutOff = filterDCutOff;
     }
-
   }
 
   setWarmupTolerance(warmupTolerance) {
-    // Validate parameter
-    if (typeof warmupTolerance !== 'number' || warmupTolerance < 0) {
-      throw new Error('warmupTolerance must be a non-negative number');
-    }
-
+    validateWarmupTolerance(warmupTolerance);
     this.warmupTolerance = warmupTolerance;
+    if (this.frameProcessor) {
+      this.frameProcessor.warmupTolerance = warmupTolerance;
+    }
   }
 
   setMissTolerance(missTolerance) {
-    // Validate parameter
-    if (typeof missTolerance !== 'number' || missTolerance < 0) {
-      throw new Error('missTolerance must be a non-negative number');
-    }
-
+    validateMissTolerance(missTolerance);
     this.missTolerance = missTolerance;
+    if (this.frameProcessor) {
+      this.frameProcessor.missTolerance = missTolerance;
+    }
   }
 
   setMaxTrack(maxTrack) {
-    // Validate parameter
-    if (typeof maxTrack !== 'number' || maxTrack < 1) {
-      throw new Error('maxTrack must be a positive integer');
-    }
-
+    validateMaxTrack(maxTrack);
     this.maxTrack = Math.floor(maxTrack);
+    if (this.frameProcessor) {
+      this.frameProcessor.maxTrack = this.maxTrack;
+    }
   }
 
   getConfig() {
@@ -494,7 +314,7 @@ class Controller {
   }
 
   async match(featurePoints, targetIndex) {
-    const {modelViewTransform, debugExtra} = await this._workerMatch(featurePoints, [targetIndex]);
+    const {modelViewTransform, debugExtra} = await this.workerManager.match(featurePoints, [targetIndex]);
     return {modelViewTransform, debugExtra};
   }
 
@@ -506,76 +326,13 @@ class Controller {
   }
 
   async trackUpdate(modelViewTransform, trackFeatures) {
-    if (trackFeatures.worldCoords.length < 4 ) return null;
-    const modelViewTransform2 = await this._workerTrackUpdate(modelViewTransform, trackFeatures);
+    if (trackFeatures.worldCoords.length < 4) return null;
+    const modelViewTransform2 = await this.workerManager.trackUpdate(modelViewTransform, trackFeatures);
     return modelViewTransform2;
-  }
-
-  _workerMatch(featurePoints, targetIndexes) {
-    return new Promise(async (resolve, reject) => {
-      this.workerMatchDone = (data) => {
-        resolve({targetIndex: data.targetIndex, modelViewTransform: data.modelViewTransform, debugExtra: data.debugExtra});
-      }
-      this.worker.postMessage({type: 'match', featurePoints: featurePoints, targetIndexes});
-    });
-  }
-
-  _workerTrackUpdate(modelViewTransform, trackingFeatures) {
-    return new Promise(async (resolve, reject) => {
-      this.workerTrackDone = (data) => {
-        resolve(data.modelViewTransform);
-      }
-      const {worldCoords, screenCoords} = trackingFeatures;
-      this.worker.postMessage({type: 'trackUpdate', modelViewTransform, worldCoords, screenCoords});
-    });
-  }
-
-  _glModelViewMatrix(modelViewTransform, targetIndex) {
-    const height = this.markerDimensions[targetIndex][1];
-
-    //
-    // all together, the combined matrix is
-    //
-    //    [1  1  0  0]   [m00, m01, m02, m03]   [1  0  0  0]
-    //    [0 -1  0  0]   [m10, m11, m12, m13]   [0 -1  0  h]
-    //    [0  0 -1  0]   [m20, m21, m22, m23]   [0  0 -1  0]
-    //    [0  0  0  1]   [  0    0    0    1]   [0  0  0  1]
-    //
-    //    [ m00,  -m01,  -m02,  (m01 * h + m03) ]
-    //    [-m10,   m11,   m12, -(m11 * h + m13) ]
-    //  = [-m20,   m21,   m22, -(m21 * h + m23) ]
-    //    [   0,     0,     0,                1 ]
-    //
-    //
-    // Finally, in threejs, matrix is represented in col by row, so we transpose it, and get below:
-    const openGLWorldMatrix = [
-      modelViewTransform[0][0], -modelViewTransform[1][0], -modelViewTransform[2][0], 0,
-      -modelViewTransform[0][1], modelViewTransform[1][1], modelViewTransform[2][1], 0,
-      -modelViewTransform[0][2], modelViewTransform[1][2], modelViewTransform[2][2], 0,
-      modelViewTransform[0][1] * height + modelViewTransform[0][3], -(modelViewTransform[1][1] * height + modelViewTransform[1][3]), -(modelViewTransform[2][1] * height + modelViewTransform[2][3]), 1
-    ];
-    return openGLWorldMatrix;
-  }
-
-  // build openGL projection matrix
-  // ref: https://strawlab.org/2011/11/05/augmented-reality-with-OpenGL/
-  _glProjectionMatrix({projectionTransform, width, height, near, far}) {
-    const proj = [
-      [2 * projectionTransform[0][0] / width, 0, -(2 * projectionTransform[0][2] / width - 1), 0],
-      [0, 2 * projectionTransform[1][1] / height, -(2 * projectionTransform[1][2] / height - 1), 0],
-      [0, 0, -(far + near) / (far - near), -2 * far * near / (far - near)],
-      [0, 0, -1, 0]
-    ];
-    const projMatrix = [];
-    for (let i = 0; i < 4; i++) {
-      for (let j = 0; j < 4; j++) {
-	projMatrix.push(proj[j][i]);
-      }
-    }
-    return projMatrix;
   }
 }
 
 export {
- Controller
-}
+  Controller
+};
+
