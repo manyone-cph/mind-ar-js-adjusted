@@ -30,7 +30,8 @@ export class MindARThree {
     targetFPS = null,
     postProcessorConfig = null, // null = disabled, {} = enabled with defaults, or custom config object
     visualizerConfig = null, // null = disabled, {} = enabled with defaults, or custom config object
-    debug = false // If true, collect graph data but don't render (for external visualization)
+    debug = false, // If true, collect graph data but don't render (for external visualization)
+    onVideoRestart = null // Optional callback called when video element is ready after restart
   }) {
     // Required parameters - no fallback
     if (!container) {
@@ -61,6 +62,7 @@ export class MindARThree {
     this.postProcessorConfig = postProcessorConfig;
     this.visualizerConfig = visualizerConfig;
     this.debug = debug;
+    this.onVideoRestart = onVideoRestart;
 
     this.shouldFaceUser = false;
 
@@ -160,6 +162,54 @@ export class MindARThree {
     // Restart if it was running
     if (wasRunning) {
       await this.start();
+      // Notify that video has restarted
+      this._notifyVideoRestart();
+    }
+  }
+
+  async setImageTargetSrc(imageTargetSrc) {
+    // Validate imageTargetSrc format
+    if (!imageTargetSrc || typeof imageTargetSrc !== 'string') {
+      throw new Error('imageTargetSrc must be a non-empty string');
+    }
+
+    // If imageTargetSrc hasn't changed, do nothing
+    if (this.imageTargetSrc === imageTargetSrc) {
+      return;
+    }
+
+    // Store current state
+    const wasRunning = this.arSession !== null;
+
+    // Stop current session if running
+    if (wasRunning) {
+      this.ui.showLoading();
+      this.stop();
+    }
+
+    // Update imageTargetSrc
+    this.imageTargetSrc = imageTargetSrc;
+
+    // Restart if it was running
+    if (wasRunning) {
+      await this.start();
+      // Notify that video has restarted
+      this._notifyVideoRestart();
+    }
+  }
+
+  _notifyVideoRestart() {
+    // Wait for video element to be ready, then notify callback
+    if (this.onVideoRestart) {
+      const waitForVideoReady = () => {
+        const video = this.videoManager.getVideo();
+        if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          this.onVideoRestart(video);
+        } else {
+          setTimeout(waitForVideoReady, 100);
+        }
+      };
+      setTimeout(waitForVideoReady, 200);
     }
   }
 
