@@ -1,21 +1,29 @@
-import { Scene, WebGLRenderer, PerspectiveCamera, sRGBEncoding } from "three";
-import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
+import { Scene } from "three";
 
 export class RendererSetup {
-  constructor(container) {
-    this.container = container;
-    this.scene = new Scene();
-    this.cssScene = new Scene();
-    this.renderer = new WebGLRenderer({ antialias: true, alpha: true });
-    this.cssRenderer = new CSS3DRenderer({ antialias: true });
-    this.renderer.outputEncoding = sRGBEncoding;
-    this.renderer.setPixelRatio(window.devicePixelRatio);
-    this.camera = new PerspectiveCamera();
+  constructor({ canvas, scene, camera }) {
+    // Canvas is required - application must provide it
+    if (!canvas) {
+      throw new Error('MindAR: canvas is required. Please provide a canvas element.');
+    }
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error('MindAR: canvas must be an HTMLCanvasElement.');
+    }
 
-    this.renderer.domElement.style.position = 'absolute';
-    this.cssRenderer.domElement.style.position = 'absolute';
-    this.container.appendChild(this.renderer.domElement);
-    this.container.appendChild(this.cssRenderer.domElement);
+    // Scene and camera are required - application must provide them
+    if (!scene) {
+      throw new Error('MindAR: scene is required. Please provide a Three.js Scene.');
+    }
+    if (!camera) {
+      throw new Error('MindAR: camera is required. Please provide a Three.js PerspectiveCamera.');
+    }
+
+    this.canvas = canvas;
+    this.scene = scene;
+    this.camera = camera;
+    
+    // CSS scene is created internally (doesn't need a renderer)
+    this.cssScene = new Scene();
   }
 
   getScene() {
@@ -26,12 +34,8 @@ export class RendererSetup {
     return this.cssScene;
   }
 
-  getRenderer() {
-    return this.renderer;
-  }
-
-  getCSSRenderer() {
-    return this.cssRenderer;
+  getCanvas() {
+    return this.canvas;
   }
 
   getCamera() {

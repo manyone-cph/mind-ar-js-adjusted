@@ -1,7 +1,14 @@
 export class ResizeHandler {
-  constructor(renderer, cssRenderer, camera, container, video, controller) {
-    this.renderer = renderer;
-    this.cssRenderer = cssRenderer;
+  constructor(canvas, camera, container, video, controller) {
+    // Canvas is required - application must provide it
+    if (!canvas) {
+      throw new Error('MindAR ResizeHandler: canvas is required.');
+    }
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error('MindAR ResizeHandler: canvas must be an HTMLCanvasElement.');
+    }
+
+    this.canvas = canvas;
     this.camera = camera;
     this.container = container;
     this.video = video;
@@ -54,34 +61,25 @@ export class ResizeHandler {
     const far = proj[14] / (proj[10] + 1.0);
     const ratio = proj[5] / proj[0]; // (r-l) / (t-b)
 
+    // Update camera projection matrix (critical for AR tracking)
     this.camera.fov = fov;
     this.camera.near = near;
     this.camera.far = far;
     this.camera.aspect = this.container.clientWidth / this.container.clientHeight;
     this.camera.updateProjectionMatrix();
 
+    // Update video element styling
     this.video.style.top = (-(vh - this.container.clientHeight) / 2) + "px";
     this.video.style.left = (-(vw - this.container.clientWidth) / 2) + "px";
     this.video.style.width = vw + "px";
     this.video.style.height = vh + "px";
 
-    const canvas = this.renderer.domElement;
-    const cssCanvas = this.cssRenderer.domElement;
-
-    canvas.style.position = 'absolute';
-    canvas.style.left = 0;
-    canvas.style.top = 0;
-    canvas.style.width = this.container.clientWidth + 'px';
-    canvas.style.height = this.container.clientHeight + 'px';
-
-    cssCanvas.style.position = 'absolute';
-    cssCanvas.style.left = 0;
-    cssCanvas.style.top = 0;
-    cssCanvas.style.width = this.container.clientWidth + 'px';
-    cssCanvas.style.height = this.container.clientHeight + 'px';
-
-    this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-    this.cssRenderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    // Update canvas styling (application handles renderer.setSize() itself)
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.left = 0;
+    this.canvas.style.top = 0;
+    this.canvas.style.width = this.container.clientWidth + 'px';
+    this.canvas.style.height = this.container.clientHeight + 'px';
   }
 }
 

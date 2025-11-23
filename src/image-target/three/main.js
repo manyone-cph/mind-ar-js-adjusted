@@ -10,6 +10,9 @@ import { UI } from "../../ui/ui.js";
 export class MindARThree {
   constructor({
     container,
+    canvas,
+    scene,
+    camera,
     imageTargetSrc,
     maxTrack,
     uiLoading = "yes",
@@ -25,6 +28,20 @@ export class MindARThree {
     resolution = null,
     targetFPS = null
   }) {
+    // Required parameters - no fallback
+    if (!container) {
+      throw new Error('MindAR: container is required.');
+    }
+    if (!canvas) {
+      throw new Error('MindAR: canvas is required. Please provide a canvas element.');
+    }
+    if (!scene) {
+      throw new Error('MindAR: scene is required. Please provide a Three.js Scene.');
+    }
+    if (!camera) {
+      throw new Error('MindAR: camera is required. Please provide a Three.js PerspectiveCamera.');
+    }
+
     this.container = container;
     this.imageTargetSrc = imageTargetSrc;
     this.maxTrack = maxTrack;
@@ -43,12 +60,11 @@ export class MindARThree {
     // Initialize UI
     this.ui = new UI({ uiLoading, uiScanning, uiError });
 
-    // Initialize renderer setup
-    this.rendererSetup = new RendererSetup(container);
+    // Initialize renderer setup with provided canvas, scene, and camera
+    this.rendererSetup = new RendererSetup({ canvas, scene, camera });
     this.scene = this.rendererSetup.getScene();
     this.cssScene = this.rendererSetup.getCSSScene();
-    this.renderer = this.rendererSetup.getRenderer();
-    this.cssRenderer = this.rendererSetup.getCSSRenderer();
+    this.canvas = this.rendererSetup.getCanvas();
     this.camera = this.rendererSetup.getCamera();
 
     // Initialize anchor manager
@@ -273,8 +289,7 @@ export class MindARThree {
 
     // Initialize resize handler
     this.resizeHandler = new ResizeHandler(
-      this.renderer,
-      this.cssRenderer,
+      this.canvas,
       this.camera,
       this.container,
       video,
