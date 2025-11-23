@@ -153,18 +153,30 @@ class FrameProcessor {
     // Check if we should skip detection (work distribution will handle the logic)
     const shouldSkipDetection = this.workDistributionManager.shouldSkipDetection(isTracking);
     
-    if (shouldSkipDetection) {
-      this.logger.debug('Detection skipped (work distribution)', {
-        qualityLevel,
-        trackingCount: nTracking,
-        isTracking,
-        detectionFrameCounter: this.workDistributionManager.getStats().detectionFrameCounter
-      });
+    // When maxTrack is 1 and we're already tracking one marker, skip detection entirely
+    // Only resume detection when tracking is lost (nTracking becomes 0)
+    const shouldSkipForSingleTarget = this.maxTrack === 1 && nTracking === 1;
+    
+    if (shouldSkipDetection || shouldSkipForSingleTarget) {
+      if (shouldSkipForSingleTarget) {
+        this.logger.debug('Detection skipped (single target focus)', {
+          trackingCount: nTracking,
+          maxTrack: this.maxTrack
+        });
+      } else {
+        this.logger.debug('Detection skipped (work distribution)', {
+          qualityLevel,
+          trackingCount: nTracking,
+          isTracking,
+          detectionFrameCounter: this.workDistributionManager.getStats().detectionFrameCounter
+        });
+      }
     }
     
-    // Always run detection if we haven't reached maxTrack, unless we're skipping for work distribution
-    // This ensures we can always detect initially and re-acquire if tracking is lost
-    if (nTracking < this.maxTrack && !shouldSkipDetection) {
+    // Run detection only if we haven't reached maxTrack and we're not skipping
+    // When maxTrack=1 and tracking=1, detection is skipped to focus on the active marker
+    // Detection resumes automatically when tracking is lost (nTracking becomes 0)
+    if (nTracking < this.maxTrack && !shouldSkipDetection && !shouldSkipForSingleTarget) {
       const matchingIndexes = this._getMatchingIndexes();
       
       if (matchingIndexes.length > 0) {
