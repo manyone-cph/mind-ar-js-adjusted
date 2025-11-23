@@ -155,15 +155,7 @@ export class MindARThree {
       // Restore anchors and face meshes
       if (this.anchorManager) {
         // Re-add anchors (this will create new anchor entries, but we'll attach to existing groups)
-        // Actually, since groups are already in the scene, we need to be careful
-        // The new anchorManager will create new groups, so we need to either:
-        // 1. Remove old groups and recreate, or
-        // 2. Reuse old groups
-        
-        // Remove old groups from scene and recreate anchors with new anchorManager
-        // Preserve user's 3D objects by moving them to new groups
         preservedAnchors.forEach(preserved => {
-          // Collect all children before removing the group
           const children = [];
           while (preserved.group.children.length > 0) {
             children.push(preserved.group.children[0]);

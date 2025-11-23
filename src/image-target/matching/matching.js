@@ -16,7 +16,7 @@ const match = ({keyframe, querypoints, querywidth, queryheight, debugMode}) => {
 
   const matches = [];
   
-  // Optimization: Limit the number of querypoints processed if there are too many
+  // Limit the number of querypoints processed if there are too many
   // This prevents excessive computation when detection finds many features
   const MAX_QUERYPOINTS_FIRST_PASS = 300;
   const querypointsToProcess = querypoints.length > MAX_QUERYPOINTS_FIRST_PASS 
@@ -40,7 +40,7 @@ const match = ({keyframe, querypoints, querywidth, queryheight, debugMode}) => {
     let bestD1 = Number.MAX_SAFE_INTEGER;
     let bestD2 = Number.MAX_SAFE_INTEGER;
     
-    // Early exit optimization: if we find a very good match, we can stop early
+    // Early exit if we find a very good match
     const EARLY_EXIT_THRESHOLD = 5;
 
     for (let k = 0; k < keypointIndexes.length; k++) {
@@ -108,7 +108,7 @@ const match = ({keyframe, querypoints, querywidth, queryheight, debugMode}) => {
   const dThreshold2 = 10 * 10;
   const matches2 = [];
   
-  // Optimization: Limit the number of querypoints processed in second pass to avoid excessive computation
+  // Limit the number of querypoints processed in second pass
   // Process at most 200 querypoints (or all if fewer) to keep matching time reasonable
   const MAX_QUERYPOINTS_SECOND_PASS = 200;
   const querypointsSecondPass = querypoints.length > MAX_QUERYPOINTS_SECOND_PASS 
@@ -131,7 +131,7 @@ const match = ({keyframe, querypoints, querywidth, queryheight, debugMode}) => {
 
     const keypoints = querypoint.maxima? keyframe.maximaPoints: keyframe.minimaPoints;
     
-    // Early exit optimization: if we find a very good match (d < 5), we can stop early
+    // Early exit if we find a very good match
     // This is based on the observation that good matches typically have low Hamming distance
     const EARLY_EXIT_THRESHOLD = 5;
     let foundEarlyMatch = false;
@@ -139,7 +139,7 @@ const match = ({keyframe, querypoints, querywidth, queryheight, debugMode}) => {
     for (let k = 0; k < keypoints.length; k++) {
       const keypoint = keypoints[k];
 
-      // check distance threshold (spatial distance check - fast, do this first)
+      // Check distance threshold
       const dx = keypoint.x - mapquerypoint[0];
       const dy = keypoint.y - mapquerypoint[1];
       const d2 = dx * dx + dy * dy;

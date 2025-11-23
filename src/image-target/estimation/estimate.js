@@ -44,7 +44,6 @@ const estimate = ({screenCoords, worldCoords, projectionTransform}) => {
   rotate[5] /= norm3;
   rotate[8] /= norm3;
 
-  // TODO: artoolkit has check_rotation() that somehow switch the rotate vector. not sure what that does. Can anyone advice?
   // https://github.com/artoolkitx/artoolkit5/blob/5bf0b671ff16ead527b9b892e6aeb1a2771f97be/lib/SRC/ARICP/icpUtil.c#L215
 
   const tran = []

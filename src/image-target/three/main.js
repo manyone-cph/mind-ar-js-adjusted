@@ -138,8 +138,6 @@ export class MindARThree {
     this.videoManager.setResolution(resolution);
 
     // Restart if it was running
-    // Note: anchorManager persists across restarts (created in constructor),
-    // so anchors and their 3D objects are automatically preserved
     if (wasRunning) {
       await this.start();
     }
@@ -196,7 +194,6 @@ export class MindARThree {
   }
 
   enablePerformanceProfiling(enabled = true) {
-    // Enable/disable performance profiling (logs timing breakdowns to console)
     if (this.arSession && this.arSession.getController()) {
       this.arSession.getController().debugMode = enabled;
     }

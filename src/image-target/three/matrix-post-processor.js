@@ -3,13 +3,10 @@ import { OneEuroFilter } from '../../libs/one-euro-filter.js';
 import { zscore, modifiedZscore, iqr } from 'divinator';
 
 /**
- * Matrix Post-Processor using proven libraries
+ * Matrix Post-Processor
  * 
- * Uses:
- * - One Euro Filter for adaptive smoothing (position, rotation, scale)
- * - Divinator for outlier detection (Z-score, Modified Z-score, IQR)
- * 
- * This replaces the custom implementation with well-tested, optimized packages.
+ * Applies One Euro Filter for adaptive smoothing (position, rotation, scale)
+ * and uses Divinator for outlier detection (Z-score, Modified Z-score, IQR)
  */
 export class MatrixPostProcessor {
   constructor(config = {}) {
@@ -21,7 +18,7 @@ export class MatrixPostProcessor {
       filterBeta: config.filterBeta ?? 1.0,          // Speed coefficient
       filterDCutOff: config.filterDCutOff ?? 0.001,  // Derivative cutoff (Hz)
       
-      // Scale filter (more stable, less responsive)
+      // Scale filter settings
       scaleFilterMinCF: config.scaleFilterMinCF ?? 0.0005,
       scaleFilterBeta: config.scaleFilterBeta ?? 0.5,
       
@@ -150,7 +147,7 @@ export class MatrixPostProcessor {
       // Check if the last element (the new delta) is marked as outlier
       return result[result.length - 1] === true;
     } catch (e) {
-      // If divinator fails, fall back to simple threshold
+      // Fallback to simple threshold calculation
       if (history.length === 0) return false;
       const mean = history.reduce((a, b) => a + b, 0) / history.length;
       const stdDev = Math.sqrt(
@@ -186,7 +183,7 @@ export class MatrixPostProcessor {
       return worldMatrix;
     }
 
-    // Calculate deltas for outlier detection (before filtering)
+    // Calculate deltas for outlier detection
     let positionDelta = 0;
     let rotationDelta = 0;
     let scaleDelta = 0;
@@ -203,7 +200,7 @@ export class MatrixPostProcessor {
       }
     }
 
-    // Check for outliers BEFORE filtering (to prevent outliers from affecting filter state)
+    // Check for outliers before filtering
     let isOutlier = false;
     if (this.config.outlierDetectionEnabled && state.previousMatrix) {
       const posOutlier = this._isOutlier(
@@ -222,7 +219,7 @@ export class MatrixPostProcessor {
         scaleDelta,
         state.scaleDeltaHistory,
         this.config.outlierMethod,
-        this.config.outlierThreshold * 0.8 // More lenient for scale
+        this.config.outlierThreshold * 0.8
       );
 
       isOutlier = posOutlier || rotOutlier || scaleOutlier;
@@ -238,19 +235,16 @@ export class MatrixPostProcessor {
           });
         }
 
-        // Return previous smoothed matrix without updating filter state or previousMatrix
-        // This prevents the outlier from contaminating the filter
         if (state.smoothedMatrix) {
           return state.smoothedMatrix.elements;
         }
-        // If no previous smoothed matrix, return raw (first frame case)
         return worldMatrix;
       } else {
         state.lastWasSkipped = false;
       }
     }
 
-    // Not an outlier - add to history before filtering
+    // Add to history
     if (state.previousMatrix) {
       state.positionDeltaHistory.push(positionDelta);
       state.rotationDeltaHistory.push(rotationDelta);
@@ -264,7 +258,7 @@ export class MatrixPostProcessor {
       }
     }
 
-    // Apply One Euro Filter to each component (only for non-outliers)
+    // Apply One Euro Filter to each component
     const filteredPos = state.positionFilter.filter(now, [
       curr.position.x,
       curr.position.y,

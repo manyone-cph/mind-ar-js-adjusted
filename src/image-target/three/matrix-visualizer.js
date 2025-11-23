@@ -109,15 +109,19 @@ export class MatrixVisualizer {
       skipped: wasSkipped
     });
     
-    // Remove old data points (older than historyDuration)
+    // Remove old data points
     const cutoff = now - this.config.historyDuration;
-    while (history.length > 0 && history[0].timestamp < cutoff) {
-      history.shift();
+    let removeCount = 0;
+    while (removeCount < history.length && history[removeCount].timestamp < cutoff) {
+      removeCount++;
+    }
+    if (removeCount > 0) {
+      history.splice(0, removeCount);
     }
     
     // Limit to maxPoints
-    while (history.length > this.config.maxPoints) {
-      history.shift();
+    if (history.length > this.config.maxPoints) {
+      history.splice(0, history.length - this.config.maxPoints);
     }
     
     // Throttle rendering to avoid excessive DOM manipulation
@@ -187,7 +191,7 @@ export class MatrixVisualizer {
     this.svg.setAttribute('width', width);
     this.svg.setAttribute('height', height);
     
-    // Clear previous render - use removeChild for better memory management
+    // Clear previous render
     while (this.dataGroup.firstChild) {
       this.dataGroup.removeChild(this.dataGroup.firstChild);
     }

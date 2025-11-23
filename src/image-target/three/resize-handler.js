@@ -34,7 +34,6 @@ export class ResizeHandler {
 
     const proj = this.controller.getProjectionMatrix();
 
-    // TODO: move this logic to controller
     // Handle when phone is rotated, video width and height are swapped
     const inputRatio = this.controller.inputWidth / this.controller.inputHeight;
     let inputAdjust;

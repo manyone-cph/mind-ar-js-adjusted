@@ -107,7 +107,7 @@ class OneEuroFilter {
     // Handle edge case: time hasn't advanced or went backwards
     const te = t - tPrev;
     if (te <= 0) {
-      // If time hasn't advanced, return previous filtered value
+      // Return previous filtered value
       return xPrev.slice();
     }
 

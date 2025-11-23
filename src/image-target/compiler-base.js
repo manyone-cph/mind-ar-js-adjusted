@@ -4,7 +4,6 @@ import { build as hierarchicalClusteringBuild } from './matching/hierarchical-cl
 import * as msgpack from '@msgpack/msgpack';
 import * as tf from '@tensorflow/tfjs';
 
-// TODO: better compression method. now grey image saved in pixels, which could be larger than original image
 
 const CURRENT_VERSION = 2;
 
@@ -123,7 +122,6 @@ const _extractMatchingFeatures = async (imageList, doneCallback) => {
   const keyframes = [];
   for (let i = 0; i < imageList.length; i++) {
     const image = imageList[i];
-    // TODO: can improve performance greatly if reuse the same detector. just need to handle resizing the kernel outputs
     const detector = new Detector(image.width, image.height);
 
     await tf.nextFrame();

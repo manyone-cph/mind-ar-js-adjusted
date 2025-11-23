@@ -295,21 +295,15 @@ class Controller {
 	}
 	
 	// if showing, then call onUpdate, with world matrix
-	// Note: Filtering is now handled by the matrix post-processor, not here
 	if (trackingState.showing) {
 	  const worldMatrix = this._glModelViewMatrix(trackingState.currentModelViewTransform, i);
 
-	  let clone = [];
-	  for (let j = 0; j < worldMatrix.length; j++) {
-	    clone[j] = worldMatrix[j];
-	  }
-
       const isInputRotated = input.width === this.inputHeight && input.height === this.inputWidth;
-      if (isInputRotated) {
-        clone = this.getRotatedZ90Matrix(clone);
-      }
+      const finalMatrix = isInputRotated 
+        ? this.getRotatedZ90Matrix(worldMatrix)
+        : worldMatrix.slice();
 
-	  this.onUpdate && this.onUpdate({type: 'updateMatrix', targetIndex: i, worldMatrix: clone});
+	  this.onUpdate && this.onUpdate({type: 'updateMatrix', targetIndex: i, worldMatrix: finalMatrix});
 	}
       }
 
@@ -317,7 +311,6 @@ class Controller {
       
       const totalFrameTime = performance.now() - frameStartTime;
       
-      // Performance profiling - log slow frames
       if (this.debugMode) {
         const breakdown = {
           total: totalFrameTime.toFixed(2),
@@ -332,8 +325,7 @@ class Controller {
       this.onUpdate && this.onUpdate({type: 'processDone'});
     };
 
-    // Use requestVideoFrameCallback if available (more efficient)
-    if (input && typeof input.requestVideoFrameCallback === 'function') {
+      if (input && typeof input.requestVideoFrameCallback === 'function') {
       const scheduleNextFrame = (now, metadata) => {
 	processFrame().then(() => {
 	  if (this.processingVideo) {
@@ -343,7 +335,6 @@ class Controller {
       };
       input.requestVideoFrameCallback(scheduleNextFrame);
     } else {
-      // Fallback to polling-based approach for older browsers
       const startProcessing = async() => {
 	while (true) {
 	  if (!this.processingVideo) break;
@@ -429,9 +420,6 @@ class Controller {
       this.filterDCutOff = filterDCutOff;
     }
 
-    // Note: Filtering is now handled by the matrix post-processor, not in the controller
-    // The filter parameters are still stored here for backward compatibility
-    // but they are passed to the post-processor via the AR session configuration
   }
 
   setWarmupTolerance(warmupTolerance) {
@@ -520,26 +508,6 @@ class Controller {
   _glModelViewMatrix(modelViewTransform, targetIndex) {
     const height = this.markerDimensions[targetIndex][1];
 
-    // Question: can someone verify this interpreation is correct? 
-    // I'm not very convinced, but more like trial and error and works......
-    //
-    // First, opengl has y coordinate system go from bottom to top, while the marker corrdinate goes from top to bottom,
-    //    since the modelViewTransform is estimated in marker coordinate, we need to apply this transform before modelViewTransform
-    //    I can see why y = h - y*, but why z = z* ? should we intepret it as rotate 90 deg along x-axis and then translate y by h?
-    //
-    //    [1  0  0  0]
-    //    [0 -1  0  h]
-    //    [0  0 -1  0]
-    //    [0  0  0  1]
-    //    
-    //    This is tested that if we reverse marker coordinate from bottom to top and estimate the modelViewTransform,
-    //    then the above matrix is not necessary.
-    //
-    // Second, in opengl, positive z is away from camera, so we rotate 90 deg along x-axis after transform to fix the axis mismatch
-    //    [1  1  0  0]
-    //    [0 -1  0  0]
-    //    [0  0 -1  0]
-    //    [0  0  0  1]
     //
     // all together, the combined matrix is
     //

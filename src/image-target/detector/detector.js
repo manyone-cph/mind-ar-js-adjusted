@@ -31,9 +31,6 @@ class Detector {
 		this.width = width;
 		this.height = height;
 		
-		// Phase 2 Optimization: Reduce octaves for very large images (4K+)
-		// For images larger than 1920x1080, reduce max octaves from 5 to 4
-		// This reduces computation by ~20% with minimal quality impact
 		const maxDimension = Math.max(width, height);
 		const maxOctaves = maxDimension > 1920 ? 4 : PYRAMID_MAX_OCTAVE;
 		
@@ -73,8 +70,6 @@ class Detector {
 		let debugExtra = null;
 		const detectStartTime = performance.now();
 
-		// Wrap tensor operations in tf.tidy() for automatic cleanup
-		// Note: We need to keep final tensors alive, so we clone them outside tidy()
 		let prunedExtremasT, extremaAnglesT, freakDescriptorsT;
 		let prunedExtremasList;
 		
@@ -171,7 +166,6 @@ class Detector {
 
 		const totalDetectTime = performance.now() - detectStartTime;
 		
-		// Performance profiling - log detailed breakdown
 		if (this.debugMode || totalDetectTime > 50) {
 			const breakdown = {
 				total: totalDetectTime.toFixed(2),
@@ -190,26 +184,22 @@ class Detector {
 		}
 
 		if (this.debugMode) {
-			// Debug mode - need to sync debug tensors (these are already disposed by tidy, so we skip)
 			debugExtra = {
-				pyramidImages: null, // Disposed by tidy()
-				dogPyramidImages: null, // Disposed by tidy()
-				extremasResults: null, // Disposed by tidy()
+				pyramidImages: null,
+				dogPyramidImages: null,
+				extremasResults: null,
 				extremaAngles: extremaAnglesArr,
 				prunedExtremas: prunedExtremasList,
 				localizedExtremas: prunedExtremasArr,
 			}
 		}
 
-		// Optimize feature point processing - pre-allocate arrays and reduce object creation
 		const featurePoints = [];
-		// Pre-calculate common values outside loop
 		const pow2Cache = new Array(this.numOctaves);
 		for (let i = 0; i < this.numOctaves; i++) {
 			pow2Cache[i] = Math.pow(2, i);
 		}
 
-		// Process feature points with optimized loop
 		for (let i = 0; i < prunedExtremasArr.length; i++) {
 			const extrema = prunedExtremasArr[i];
 			if (extrema[0] == 0) continue;
@@ -218,7 +208,6 @@ class Detector {
 			const descriptorCount = freakDescriptorsArr[i].length / 4;
 			const descriptors = new Array(descriptorCount);
 
-			// Optimized descriptor processing - unroll loop slightly
 			const freakDesc = freakDescriptorsArr[i];
 			for (let m = 0, dIdx = 0; m < freakDesc.length; m += 4, dIdx++) {
 				descriptors[dIdx] = freakDesc[m] * 16777216 + 
@@ -327,7 +316,7 @@ class Detector {
 		const gaussianImagesT = [];
 		for (let i = 1; i < pyramidImagesT.length; i++) {
 			//gaussianImagesT.push(pyramidImagesT[i][0]);
-			gaussianImagesT.push(pyramidImagesT[i][1]); // better
+			gaussianImagesT.push(pyramidImagesT[i][1]);
 		}
 
 		/* if (!this.kernelCaches._computeExtremaFreak) {
@@ -477,7 +466,6 @@ class Detector {
 		});
 	}
 
-	// TODO: maybe can try just using average momentum, instead of histogram method. histogram might be overcomplicated
 	/**
 	 * 
 	 * @param {tf.Tensor<tf.Rank>} prunedExtremasT 
@@ -668,52 +656,8 @@ class Detector {
 	 * @returns 
 	 */
 	_computeLocalization(prunedExtremasList, dogPyramidImagesT) {
-		/*  if (!this.kernelCaches.computeLocalization) {
-		   const dogVariableNames = [];
-	 
-		   let dogSubCodes = `float getPixel(int octave, int y, int x) {`;
-		   for (let i = 1; i < dogPyramidImagesT.length; i++) {  // extrema starts from second octave
-		 dogVariableNames.push('image' + i);
-		 dogSubCodes += `
-		   if (octave == ${i}) {
-			 return getImage${i}(y, x);
-		   }
-		   `;
-		   }
-		   dogSubCodes += `}`;
-	 
-		   const kernel = {
-		 variableNames: [...dogVariableNames, 'extrema'],
-		 outputShape: [prunedExtremasList.length, 3, 3], // 3x3 pixels around the extrema
-		 userCode: `
-		   ${dogSubCodes}
-	 
-		   void main() {
-			 ivec3 coords = getOutputCoords();
-			 int featureIndex = coords[0];
-			 float score = getExtrema(featureIndex, 0);
-			 if (score == 0.0) {
-			   return;
-			 }
-	 
-			 int dy = coords[1]-1;
-			 int dx = coords[2]-1;
-			 int octave = int(getExtrema(featureIndex, 1));
-			 int y = int(getExtrema(featureIndex, 2));
-			 int x = int(getExtrema(featureIndex, 3));
-			 setOutput(getPixel(octave, y+dy, x+dx));
-		   }
-		 `
-		   }
-	 
-		   this.kernelCaches.computeLocalization = [kernel];
-		 } */
-
 		return tf.tidy(() => {
-			//const program = this.kernelCaches.computeLocalization[0];
-			//const prunedExtremasT = tf.tensor(prunedExtremasList, [prunedExtremasList.length, prunedExtremasList[0].length], 'int32');
-
-			const pixelsT = tf.engine().runKernel('ComputeLocalization', { prunedExtremasList, dogPyramidImagesT });//this._compileAndRun(program, [...dogPyramidImagesT.slice(1), prunedExtremasT]);
+			const pixelsT = tf.engine().runKernel('ComputeLocalization', { prunedExtremasList, dogPyramidImagesT });
 			const pixels = pixelsT.arraySync();
 
 			const result = [];
@@ -763,9 +707,6 @@ class Detector {
 		});
 	}
 
-	// faster to do it in CPU
-	// if we do in gpu, we probably need to use tf.topk(), which seems to be run in CPU anyway (no gpu operation for that)
-	//  TODO: research adapative maximum supression method
 	/**
 	 * 
 	 * @param {tf.Tensor<tf.Rank>[]} extremasResultsT 
@@ -774,54 +715,6 @@ class Detector {
 	_applyPrune(extremasResultsT) {
 		const nBuckets = NUM_BUCKETS_PER_DIMENSION * NUM_BUCKETS_PER_DIMENSION;
 		const nFeatures = MAX_FEATURES_PER_BUCKET;
-		/*
-		if (!this.kernelCaches.applyPrune) {
-		  const reductionKernels = [];
-	
-		  // to reduce to amount of data that need to sync back to CPU by 4 times, we apply this trick:
-		  // the fact that there is not possible to have consecutive maximum/minimum, we can safe combine 4 pixels into 1
-		  for (let k = 0; k < extremasResultsT.length; k++) {
-			const extremaHeight = extremasResultsT[k].shape[0];
-			const extremaWidth = extremasResultsT[k].shape[1];
-	
-			const kernel = {
-				variableNames: ['extrema'],
-				outputShape: [Math.floor(extremaHeight/2), Math.floor(extremaWidth/2)],
-				userCode: `
-					void main() {
-						ivec2 coords = getOutputCoords();
-						int y = coords[0] * 2;
-						int x = coords[1] * 2;
-	
-						float location = 0.0;
-						float values = getExtrema(y, x);
-	
-						if (getExtrema(y+1, x) != 0.0) {
-							location = 1.0;
-						values = getExtrema(y+1, x);
-						}
-						else if (getExtrema(y, x+1) != 0.0) {
-							location = 2.0;
-						values = getExtrema(y, x+1);
-						}
-						else if (getExtrema(y+1, x+1) != 0.0) {
-							location = 3.0;
-						values = getExtrema(y+1, x+1);
-						}
-	
-						if (values < 0.0) {
-							setOutput(location * -1000.0 + values);
-						} else {
-							setOutput(location * 1000.0 + values);
-						}
-					}
-				`
-			}
-			reductionKernels.push(kernel);
-		  }
-		  this.kernelCaches.applyPrune = {reductionKernels};
-		}
-		*/
 		// combine results into a tensor of:
 		//   nBuckets x nFeatures x [score, octave, y, x]
 		const curAbsScores = [];

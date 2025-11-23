@@ -40,7 +40,6 @@ const computeHomography = (options) => {
   const maxTrials = numHypothesis * 2;
 
   // build numerous hypotheses by randoming draw four points
-  // TODO: optimize: if number of points is less than certain number, can brute force all combinations
   let trial = 0;
   const Hs = [];
   while (trial < maxTrials && Hs.length < numHypothesis) {

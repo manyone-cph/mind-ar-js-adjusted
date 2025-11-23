@@ -25,12 +25,12 @@ export class MatrixUpdater {
 
   updateMatrix(targetIndex, worldMatrix) {
     // Store raw matrix for visualization
-    const rawMatrix = worldMatrix ? (() => {
-      const m = new Matrix4();
-      m.elements = [...worldMatrix];
-      return m;
-    })() : null;
-    this.rawMatrices.set(targetIndex, rawMatrix);
+    let rawMatrix = null;
+    if (this.visualizer && worldMatrix) {
+      rawMatrix = new Matrix4();
+      rawMatrix.elements = worldMatrix.slice();
+      this.rawMatrices.set(targetIndex, rawMatrix);
+    }
     
     // Track if this frame was skipped (outlier)
     let wasSkipped = false;
@@ -49,7 +49,7 @@ export class MatrixUpdater {
     if (this.visualizer) {
       const processedM = processedMatrix ? (() => {
         const m = new Matrix4();
-        m.elements = [...processedMatrix];
+        m.elements = processedMatrix.slice();
         return m;
       })() : null;
       this.visualizer.addDataPoint(targetIndex, rawMatrix, processedM, wasSkipped);
@@ -57,7 +57,7 @@ export class MatrixUpdater {
 
     for (let i = 0; i < this.anchors.length; i++) {
       if (this.anchors[i].targetIndex === targetIndex) {
-        // Determine visibility based on processed matrix (post-processor may hide even if tracking exists)
+        // Determine visibility based on processed matrix
         const isVisible = processedMatrix !== null;
         
         if (this.anchors[i].css) {
@@ -69,18 +69,19 @@ export class MatrixUpdater {
         }
 
         if (isVisible) {
-          let m = new Matrix4();
-          m.elements = [...processedMatrix];
+          let m = this.anchors[i]._tempMatrix || new Matrix4();
+          m.elements = processedMatrix.slice();
           m.multiply(this.postMatrixs[targetIndex]);
           if (this.anchors[i].css) {
             m.multiply(cssScaleDownMatrix);
           }
           this.anchors[i].group.matrix = m;
+          this.anchors[i]._tempMatrix = m;
         } else {
           this.anchors[i].group.matrix = invisibleMatrix;
         }
 
-        // Track visibility changes for callbacks (based on processed result, not raw tracking)
+        // Track visibility changes for callbacks
         if (this.anchors[i].visible && !isVisible) {
           this.anchors[i].visible = false;
           if (this.anchors[i].onTargetLost) {

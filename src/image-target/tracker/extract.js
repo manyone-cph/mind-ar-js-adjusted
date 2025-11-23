@@ -60,7 +60,7 @@ const extract = (image) => {
   }
 
   // Step 1.2 - select all pixel which is dValue largest than all its neighbour as "potential" candidate
-  //  the number of selected points is still too many, so we use the value to further filter (e.g. largest the dValue, the better)
+  // Filter points by dValue
   const dValueHist = new Uint32Array(1000); // histogram of dvalue scaled to [0, 1000)
   for (let i = 0; i < 1000; i++) dValueHist[i] = 0;
   const neighbourOffsets = [-1, 1, -width, width];
@@ -87,7 +87,6 @@ const extract = (image) => {
   }
 
   // reduce number of points according to dValue.
-  // actually, the whole Step 1. might be better to just sort the dvalues and pick the top (0.02 * width * height) points
   const maxPoints = 0.02 * width * height;
   let k = 999;
   let filteredCount = 0;
@@ -295,7 +294,6 @@ const _getSimilarity = (options) => {
   let sxx = imageDataSqrCumsum.query(cx-templateSize, cy-templateSize, cx+templateSize, cy+templateSize);
   let sxy = 0;
 
-  // !! This loop is the performance bottleneck. Use moving pointers to optimize
   //
   //   for (let i = cx - templateSize, i2 = tx - templateSize; i <= cx + templateSize; i++, i2++) {
   //     for (let j = cy - templateSize, j2 = ty - templateSize; j <= cy + templateSize; j++, j2++) {

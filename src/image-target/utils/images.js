@@ -1,4 +1,4 @@
-// simpler version of upsampling. better performance
+// Upsampling implementation
 const _upsampleBilinear = ({image, padOneWidth, padOneHeight}) => {
   const {width, height, data} = image;
   const dstWidth = image.width * 2 + (padOneWidth?1:0);

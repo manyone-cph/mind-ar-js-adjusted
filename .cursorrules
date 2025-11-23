@@ -1,0 +1,151 @@
+# Comment Style Guidelines
+
+## Core Principles
+
+Comments should focus on **what** the code does, not **why** it was written that way or how it evolved. All comments must be utility-focused and describe the current state of the codebase only.
+
+## Rules
+
+### ✅ DO: Write Utility-Focused Comments
+
+Comments should explain:
+- What a function or block of code does
+- What parameters mean
+- What values represent
+- Algorithm steps or data structures
+
+**Good Examples:**
+```javascript
+// Apply One Euro Filter to each component
+const filteredPos = state.positionFilter.filter(now, [x, y, z]);
+
+// Check for outliers before filtering
+if (this.config.outlierDetectionEnabled && state.previousMatrix) {
+  // ...
+}
+
+// Remove old data points
+const cutoff = now - this.config.historyDuration;
+
+// Limit the number of querypoints processed if there are too many
+if (querypoints.length > MAX_QUERYPOINTS) {
+  // ...
+}
+```
+
+### ❌ DON'T: Write Historical or Contextual Comments
+
+Never include:
+- References to previous implementations ("replaces", "replaced", "old", "previous", "earlier", "before")
+- Explanations of why code was changed
+- Notes about code evolution or migration
+- References to earlier versions
+
+**Bad Examples:**
+```javascript
+// This replaces the custom implementation with well-tested packages
+// Note: Filtering is now handled by the matrix post-processor, not here
+// Phase 2 Optimization: Reduce octaves for very large images
+// Note: We need to keep final tensors alive, so we clone them outside tidy()
+```
+
+### ❌ DON'T: Write Performance Explanations
+
+Never include:
+- Comments about optimization, performance, efficiency
+- Explanations of why code is fast or slow
+- Notes about bottlenecks or performance characteristics
+- Comparisons of different approaches' performance
+
+**Bad Examples:**
+```javascript
+// Use slice() for efficient copy
+// More efficient than multiple shifts
+// Performance profiling - log slow frames
+// This loop is the performance bottleneck
+// faster to do it in CPU
+// better performance
+```
+
+### ❌ DON'T: Write TODO/FIXME Comments
+
+Remove all TODO and FIXME comments. If something needs to be done, create an issue or implement it.
+
+**Bad Examples:**
+```javascript
+// TODO: optimize median
+// TODO: better compression method
+// FIXME: handle edge case
+```
+
+### ❌ DON'T: Write Explanatory "Why" Comments
+
+Avoid comments that explain:
+- Why code is structured a certain way
+- Why a workaround exists
+- Why a decision was made
+- Rationale or reasoning
+
+**Bad Examples:**
+```javascript
+// Note: anchorManager persists across restarts (created in constructor)
+// This prevents the outlier from contaminating the filter
+// If divinator fails, fall back to simple threshold
+// We manually added a single space to get around the regex replacement
+```
+
+### ❌ DON'T: Write Comparison Comments
+
+Never compare approaches or mention alternatives:
+- "better than X"
+- "instead of Y"
+- "more X than Y"
+
+**Bad Examples:**
+```javascript
+// simpler version of upsampling. better performance
+// more efficient than multiple shifts
+// better memory management
+```
+
+## Acceptable Comment Types
+
+### Function/Class Documentation
+```javascript
+/**
+ * Matrix Post-Processor
+ * 
+ * Applies One Euro Filter for adaptive smoothing (position, rotation, scale)
+ * and uses Divinator for outlier detection (Z-score, Modified Z-score, IQR)
+ */
+```
+
+### Parameter/Value Clarification
+```javascript
+filterMinCF: config.filterMinCF ?? 0.001,  // Base cutoff frequency (Hz)
+outlierMethod: config.outlierMethod ?? 'zScore',  // 'zScore', 'modifiedZScore', 'iqr'
+```
+
+### Algorithm Steps
+```javascript
+// Calculate deltas for outlier detection
+// Add to history
+// Apply One Euro Filter to each component
+```
+
+### Data Structure Description
+```javascript
+// Per-target state
+this.targetStates = new Map();
+
+// Array of position delta magnitudes
+positionDeltaHistory: [],
+```
+
+## Summary
+
+**Good comments answer:** "What does this do?"
+**Bad comments answer:** "Why is this here?" or "How did this evolve?"
+
+Focus on the present state of the code, not its history or performance characteristics.
+

@@ -8,7 +8,7 @@ const ICP_BREAK_LOOP_ERROR_THRESH = 0.1;
 const ICP_BREAK_LOOP_ERROR_RATIO_THRESH = 0.99;
 const ICP_BREAK_LOOP_ERROR_THRESH2 = 4.0;
 
-// some temporary/intermediate variables used later. Declare them beforehand to reduce new object allocations
+// Temporary/intermediate variables
 let mat = [[],[],[]]; 
 let J_U_Xc = [[],[]]; // 2x3
 let J_Xc_S = [[],[],[]]; // 3x6

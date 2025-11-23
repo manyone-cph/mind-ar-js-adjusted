@@ -28,7 +28,6 @@ const computeHoughMatches = (options) => {
     projectedDims.push( scale * maxDim );
   }
 
-  // TODO optimize median
   //   weird. median should be [Math.floor(projectedDims.length/2) - 1] ?
   projectedDims.sort((a1, a2) => {return a1 - a2});
   const medianProjectedDim = projectedDims[ Math.floor(projectedDims.length/2) - (projectedDims.length%2==0?1:0) -1 ];

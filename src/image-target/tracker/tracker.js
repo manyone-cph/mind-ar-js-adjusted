@@ -59,8 +59,6 @@ class Tracker {
 
     const modelViewProjectionTransform = buildModelViewProjectionTransform(this.projectionTransform, lastModelViewTransform);
     
-    // Wrap tensor operations in tf.tidy() for automatic cleanup
-    // Note: _computeMatching already uses tf.tidy() internally, so its tensors are kept alive
     let projectedImageTClone;
     let matchingPointsT, simT;
     
@@ -82,15 +80,11 @@ class Tracker {
       const imagePropertiesT = this.imagePropertiesListT[targetIndex];
 
       const projectedImageTTemp = this._computeProjection(modelViewProjectionTransformT, inputImageT, targetIndex);
-      
-      // Clone projectedImageT to keep it alive outside tidy() for _computeMatching
-      // Use tf.keep() to prevent disposal by tidy()
       projectedImageTClone = tf.keep(projectedImageTTemp.clone());
     });
     projectionTime = performance.now() - projectionStart;
     
     const matchingStart = performance.now();
-    // Now call _computeMatching with the cloned tensor (it uses its own tf.tidy())
     const matchingResult = this._computeMatching(
       this.featurePointsListT[targetIndex],
       this.imagePixelsListT[targetIndex],
@@ -130,7 +124,6 @@ class Tracker {
 
     const totalTrackTime = performance.now() - trackStartTime;
     
-    // Performance profiling - log tracking breakdown
     if (this.debugMode) {
       const breakdown = {
         total: totalTrackTime.toFixed(2),
