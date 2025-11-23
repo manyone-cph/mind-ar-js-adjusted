@@ -226,14 +226,22 @@ class Controller {
     this.trackingStateManager.reset();
 
     if (input && typeof input.requestVideoFrameCallback === 'function') {
+      // Use enhanced video frame scheduler with metadata support
       const scheduleNextFrame = (now, metadata) => {
-        this.frameProcessor.processFrame(input).then(() => {
+        // Pass metadata to frame processor for better timing
+        this.frameProcessor.processFrame(input, metadata).then(() => {
+          if (this.processingVideo) {
+            input.requestVideoFrameCallback(scheduleNextFrame);
+          }
+        }).catch(error => {
+          this.logger.error('Frame processing error', { error: error.message });
           if (this.processingVideo) {
             input.requestVideoFrameCallback(scheduleNextFrame);
           }
         });
       };
       input.requestVideoFrameCallback(scheduleNextFrame);
+      this.logger.info('Using requestVideoFrameCallback for frame timing');
     } else {
       const startProcessing = async () => {
         while (true) {

@@ -1,6 +1,7 @@
 import {memory, nextFrame} from '@tensorflow/tfjs';
 import {WorkDistributionManager} from '../performance/work-distribution-manager.js';
 import {MemoryManager} from '../performance/memory-manager.js';
+import {SmartScheduler, scheduleIdleWork} from '../performance/smart-scheduler.js';
 import {Logger} from '../../libs/logger.js';
 
 const tf = {memory, nextFrame};
@@ -57,6 +58,14 @@ class FrameProcessor {
       debugMode: debugMode
     });
 
+    this.smartScheduler = new SmartScheduler({
+      enableAdaptiveSkipping: true,
+      skipThreshold: 1.5, // Skip if frame time > 1.5x target
+      maxConsecutiveSkips: 3, // Max 3 consecutive skips
+      skipRecoveryFrames: 5, // Wait 5 frames between skip opportunities
+      debugMode: debugMode
+    });
+
     // Register cleanup callbacks
     this.memoryManager.registerCleanupCallback(() => {
       // Force disposal of any lingering tensors
@@ -67,8 +76,21 @@ class FrameProcessor {
         }
       }
     });
+
+    // Register idle callbacks for non-critical work
+    this.memoryManager.registerIdleCallback(() => {
+      // Perform non-critical cleanup during idle time
+      scheduleIdleWork(() => {
+        // Additional cleanup that can wait
+        if (this.debugMode && this.memoryManager.frameCount % 120 === 0) {
+          const skipStats = this.smartScheduler.getSkipStats();
+          this.logger.debug('Scheduler stats', skipStats);
+        }
+      });
+    });
     
     this.hasEverDetected = false; // Track if we've ever successfully detected a target
+    this.shouldSkipNextFrame = false; // Flag for adaptive frame skipping
 
     this.logger = new Logger('FrameProcessor', true, debugMode ? 'debug' : 'info');
     this.logger.info('Frame processor initialized', {
@@ -79,15 +101,25 @@ class FrameProcessor {
     });
   }
 
-  async processFrame(input) {
+  async processFrame(input, metadata = null) {
     if (this.processingPaused) {
       return;
     }
 
     const frameStartTime = performance.now();
 
+    // Use metadata timing if available (from requestVideoFrameCallback)
+    const now = metadata ? metadata.expectedDisplayTime : performance.now();
+    
+    // Check adaptive frame skipping first (based on previous frame performance)
+    if (this.shouldSkipNextFrame) {
+      this.shouldSkipNextFrame = false;
+      this.logger.debug('Frame skipped (adaptive scheduling)');
+      return;
+    }
+    
+    // Basic FPS limiting
     if (this.targetFPS && this.frameInterval > 0) {
-      const now = performance.now();
       const timeSinceLastFrame = now - this.lastFrameTime;
       
       if (timeSinceLastFrame < this.frameInterval) {
@@ -207,6 +239,11 @@ class FrameProcessor {
     
     const totalFrameTime = performance.now() - frameStartTime;
     
+    // Check if we should skip next frame based on performance (adaptive skipping)
+    const targetFrameTime = this.targetFPS ? (1000 / this.targetFPS) : 33.33;
+    this.shouldSkipNextFrame = this.smartScheduler.shouldSkipFrame(totalFrameTime, targetFrameTime);
+    this.smartScheduler.recordFrame(totalFrameTime);
+    
     const oldQuality = this.performanceManager.getQuality();
     const oldQualityLevel = this.performanceManager.getQualityLevel();
     const qualityChanged = this.performanceManager.recordFrameTime(totalFrameTime);
@@ -262,6 +299,13 @@ class FrameProcessor {
         breakdown.memoryGPU = memoryStats.numBytesInGPUFormatted;
       }
       
+      // Add scheduler stats periodically
+      if (this.smartScheduler.totalFrames % 60 === 0 && this.smartScheduler.totalFrames > 0) {
+        const skipStats = this.smartScheduler.getSkipStats();
+        breakdown.skipRate = skipStats.skipRate;
+        breakdown.consecutiveSkips = skipStats.consecutiveSkips;
+      }
+      
       this.logger.debug('Frame timing', breakdown);
     }
     
@@ -269,6 +313,7 @@ class FrameProcessor {
     const perfStats = this.performanceManager.getStats();
     if (perfStats && perfStats.frameCount > 0 && perfStats.frameCount % 60 === 0) {
       const memoryStats = this.memoryManager.getMemoryStats();
+      const skipStats = this.smartScheduler.getSkipStats();
       this.logger.info('Performance status', {
         quality: perfStats.quality,
         qualityLevel: perfStats.qualityLevel,
@@ -278,7 +323,8 @@ class FrameProcessor {
         trackingCount: nTracking,
         frameCount: perfStats.frameCount,
         memoryTensors: memoryStats.numTensors,
-        memoryGPU: memoryStats.numBytesInGPUFormatted
+        memoryGPU: memoryStats.numBytesInGPUFormatted,
+        skipRate: skipStats.skipRate
       });
     }
     
