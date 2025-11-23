@@ -48,16 +48,16 @@ class WorkDistributionManager {
       return false;
     }
 
-    // If we're tracking, skip detection on some frames to reduce load
-    if (isTracking) {
-      this.detectionFrameCounter++;
-      if (this.detectionFrameCounter % this.config.detectionSkipInterval === 0) {
-        return true;
-      }
-    } else {
-      // Always do detection when not tracking
+    // Never skip detection when not tracking - we need it to acquire targets
+    if (!isTracking) {
       this.detectionFrameCounter = 0;
       return false;
+    }
+
+    // If we're tracking, skip detection on some frames to reduce load
+    this.detectionFrameCounter++;
+    if (this.detectionFrameCounter % this.config.detectionSkipInterval === 0) {
+      return true;
     }
 
     return false;

@@ -43,10 +43,12 @@ class FrameProcessor {
     this.processingPaused = false;
 
     this.workDistributionManager = new WorkDistributionManager({
-      detectionSkipInterval: 2, // Skip detection every 2 frames when tracking
+      detectionSkipInterval: 3, // Skip detection every 3 frames when tracking (less aggressive)
       maxTrackingPerFrame: 1, // Process 1 tracking target per frame when quality is low
       debugMode: debugMode
     });
+    
+    this.hasEverDetected = false; // Track if we've ever successfully detected a target
 
     this.logger = new Logger('FrameProcessor', true, debugMode ? 'debug' : 'info');
     this.logger.info('Frame processor initialized', {
@@ -88,16 +90,21 @@ class FrameProcessor {
 
     let detectionTime = 0;
     let matchingTime = 0;
+    
+    // Check if we should skip detection (work distribution will handle the logic)
     const shouldSkipDetection = this.workDistributionManager.shouldSkipDetection(isTracking);
     
     if (shouldSkipDetection) {
       this.logger.debug('Detection skipped (work distribution)', {
         qualityLevel,
         trackingCount: nTracking,
+        isTracking,
         detectionFrameCounter: this.workDistributionManager.getStats().detectionFrameCounter
       });
     }
     
+    // Always run detection if we haven't reached maxTrack, unless we're skipping for work distribution
+    // This ensures we can always detect initially and re-acquire if tracking is lost
     if (nTracking < this.maxTrack && !shouldSkipDetection) {
       const matchingIndexes = this._getMatchingIndexes();
       
@@ -111,6 +118,7 @@ class FrameProcessor {
           const state = this.trackingStateManager.getState(matchedTargetIndex);
           state.isTracking = true;
           state.currentModelViewTransform = modelViewTransform;
+          this.hasEverDetected = true;
           this.logger.debug('Target detected', {
             targetIndex: matchedTargetIndex,
             detectionTime: detectionTime.toFixed(2)
@@ -182,13 +190,21 @@ class FrameProcessor {
     const newQualityLevel = this.performanceManager.getQualityLevel();
     
     if (qualityChanged && this.tracker && this.cropDetector) {
+      // Apply quality to tracker
       this.tracker.setQuality(newQuality);
-      this.cropDetector.detector.setQuality(newQuality);
+      
+      // For detector, maintain minimum quality of 0.5 if we haven't detected yet
+      // This ensures initial detection can work even on slow devices
+      const detectorQuality = this.hasEverDetected ? newQuality : Math.max(newQuality, 0.5);
+      this.cropDetector.detector.setQuality(detectorQuality);
+      
       this.logger.info('Quality applied to detector and tracker', {
-        quality: newQuality.toFixed(2),
+        trackerQuality: newQuality.toFixed(2),
+        detectorQuality: detectorQuality.toFixed(2),
         qualityLevel: newQualityLevel,
         oldQuality: oldQuality.toFixed(2),
-        oldQualityLevel
+        oldQualityLevel,
+        hasEverDetected: this.hasEverDetected
       });
     }
     

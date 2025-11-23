@@ -70,9 +70,11 @@ class Detector {
 		if (qualityLevel === 'high') {
 			this.numOctaves = this.maxNumOctaves;
 		} else if (qualityLevel === 'medium') {
-			this.numOctaves = Math.max(2, Math.floor(this.maxNumOctaves * 0.75));
+			// Medium: use at least 75% of octaves, but ensure minimum of 3 octaves for better detection
+			this.numOctaves = Math.max(3, Math.floor(this.maxNumOctaves * 0.75));
 		} else {
-			this.numOctaves = Math.max(2, Math.floor(this.maxNumOctaves * 0.5));
+			// Low: use at least 50% of octaves, but ensure minimum of 3 octaves (not 2) for detection to work
+			this.numOctaves = Math.max(3, Math.floor(this.maxNumOctaves * 0.5));
 		}
 	}
 
