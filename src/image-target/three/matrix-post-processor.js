@@ -4,13 +4,33 @@ import { Matrix4, Vector3, Quaternion } from "three";
  * Advanced post-processing pipeline for AR tracking matrices
  * 
  * Features:
+ * - General Stabilization: Base smoothing applied to all frames to reduce jitter and create
+ *   rock-solid tracking. Configurable strength (0-1) for fine-tuning stability vs responsiveness.
+ * - Multi-frame Smoothing: Averages across a window of recent frames (default 5 frames) for
+ *   additional stabilization. Reduces micro-jitter that propagates to larger objects.
  * - Statistical outlier detection: Uses running statistics (mean, std dev) to detect
  *   unrealistic movements relative to observed motion patterns. Automatically adapts
  *   to slow/fast/accelerating motion without fixed thresholds.
- * - Adaptive smoothing: Adjusts smoothing based on movement speed (fast = less smoothing, slow = more)
+ * - Adaptive smoothing: Additional smoothing that adjusts based on movement speed
+ *   (fast = less smoothing, slow = more). Works on top of general stabilization.
  * - Motion prediction: Continues animating when tracking is lost (up to configurable duration)
  * - Elegant state transitions: Tracks 'lost', 'losing', 'finding', 'found' states with confidence
  * - Dynamic parameter adjustment: Parameters adapt based on observed motion patterns
+ * 
+ * Stabilization Pipeline:
+ * 1. General Stabilization (base): Applied to all frames with configurable strength
+ * 2. Multi-frame Smoothing: Averages across recent frames with ADAPTIVE window size and weighting:
+ *    - Window size adapts: smaller (2-3 frames) during fast movement/acceleration, larger (7-8 frames) when static
+ *    - Weighting adapts: more weight on recent frames when momentum is changing, even distribution when stable
+ *    - Responds to acceleration: reduces smoothing when momentum shifts are detected
+ * 3. Adaptive Smoothing: Additional smoothing based on movement speed (fast = less, slow = more)
+ * 4. Outlier Detection: Rejects unrealistic jumps while continuing smooth movement
+ * 
+ * Adaptive Behavior:
+ * - Fast movement or acceleration → smaller window, more weight on recent frames (responsive)
+ * - Static/slow movement → larger window, even weight distribution (stable)
+ * - Momentum changes detected → automatically reduces smoothing for responsiveness
+ * - Stable momentum → increases smoothing for stability
  * 
  * Outlier Detection:
  * The system tracks a history of position, rotation, and scale deltas (changes between frames).
@@ -38,9 +58,19 @@ export class MatrixPostProcessor {
       outlierHistorySize: config.outlierHistorySize ?? 20, // frames to analyze for statistical outlier detection
       minHistoryForOutlierDetection: config.minHistoryForOutlierDetection ?? 5, // minimum frames needed before outlier detection activates
       
-      // Adaptive smoothing
-      minSmoothingFactor: config.minSmoothingFactor ?? 0.1, // for fast movement
-      maxSmoothingFactor: config.maxSmoothingFactor ?? 0.8, // for slow/static movement
+      // General stabilization (applied to all frames)
+      stabilizationEnabled: config.stabilizationEnabled ?? true, // enable general stabilization
+      stabilizationStrength: config.stabilizationStrength ?? 0.6, // 0-1, higher = more smoothing (0.6 = 60% smoothing)
+      multiFrameSmoothing: config.multiFrameSmoothing ?? true, // use multi-frame smoothing window
+      smoothingWindowSize: config.smoothingWindowSize ?? 5, // base number of frames to average over
+      minSmoothingWindowSize: config.minSmoothingWindowSize ?? 2, // minimum window size (for fast movement)
+      maxSmoothingWindowSize: config.maxSmoothingWindowSize ?? 8, // maximum window size (for static/slow movement)
+      adaptiveWindowSize: config.adaptiveWindowSize ?? true, // adapt window size based on movement
+      accelerationThreshold: config.accelerationThreshold ?? 0.02, // m/s² - threshold for detecting momentum changes
+      
+      // Adaptive smoothing (additional smoothing based on movement speed)
+      minSmoothingFactor: config.minSmoothingFactor ?? 0.1, // for fast movement (additional on top of stabilization)
+      maxSmoothingFactor: config.maxSmoothingFactor ?? 0.8, // for slow/static movement (additional on top of stabilization)
       velocityThreshold: config.velocityThreshold ?? 0.05, // m/s - threshold between fast/slow
       angularVelocityThreshold: config.angularVelocityThreshold ?? 0.1, // rad/s
       
@@ -89,6 +119,8 @@ export class MatrixPostProcessor {
         velocity: new Vector3(),
         angularVelocity: new Quaternion(),
         acceleration: new Vector3(),
+        previousVelocity: null, // for calculating acceleration (initialized on first frame)
+        previousAngularVelocity: null, // for calculating angular acceleration (initialized on first frame)
         
         // Prediction
         predictedMatrix: null,
@@ -115,6 +147,11 @@ export class MatrixPostProcessor {
         positionDeltaHistory: [], // array of position deltas (Vector3 distances)
         rotationDeltaHistory: [], // array of rotation deltas (angles in radians)
         scaleDeltaHistory: [], // array of scale deltas (ratios)
+        
+        // Multi-frame smoothing history (for general stabilization)
+        smoothedPositionHistory: [], // recent smoothed positions
+        smoothedRotationHistory: [], // recent smoothed rotations
+        smoothedScaleHistory: [], // recent smoothed scales
         
         // Running statistics for outlier detection
         positionDeltaStats: { mean: 0, stdDev: 0, variance: 0 },
@@ -283,7 +320,152 @@ export class MatrixPostProcessor {
   }
 
   /**
-   * Apply adaptive smoothing
+   * Calculate adaptive window size based on movement characteristics
+   */
+  _calculateAdaptiveWindowSize(state, deltaTime) {
+    if (!this.config.adaptiveWindowSize) {
+      return this.config.smoothingWindowSize;
+    }
+
+    // Calculate movement characteristics
+    const linearSpeed = state.velocity.length();
+    state.tempQuaternion.identity();
+    const angularSpeed = Math.abs(state.angularVelocity.angleTo(state.tempQuaternion));
+    
+    // Calculate acceleration magnitude
+    const accelerationMagnitude = state.acceleration.length();
+    
+    // Determine movement state
+    const isFast = linearSpeed > this.config.velocityThreshold || angularSpeed > this.config.angularVelocityThreshold;
+    const isAccelerating = accelerationMagnitude > this.config.accelerationThreshold;
+    const isStatic = linearSpeed < this.config.velocityThreshold * 0.3 && angularSpeed < this.config.angularVelocityThreshold * 0.3;
+
+    // Adaptive window sizing:
+    // - Fast movement or acceleration = smaller window (more responsive)
+    // - Static/slow movement = larger window (more stable)
+    // - Momentum changes (acceleration) = reduce window to be more responsive
+    let adaptiveWindowSize = this.config.smoothingWindowSize;
+    
+    if (isAccelerating) {
+      // Momentum is changing - use smaller window for responsiveness
+      adaptiveWindowSize = this.config.minSmoothingWindowSize + 
+        (this.config.smoothingWindowSize - this.config.minSmoothingWindowSize) * 0.3;
+    } else if (isFast) {
+      // Fast but stable movement - medium window
+      adaptiveWindowSize = this.config.minSmoothingWindowSize + 
+        (this.config.smoothingWindowSize - this.config.minSmoothingWindowSize) * 0.6;
+    } else if (isStatic) {
+      // Static or very slow - use larger window for maximum stability
+      adaptiveWindowSize = this.config.smoothingWindowSize + 
+        (this.config.maxSmoothingWindowSize - this.config.smoothingWindowSize) * 0.7;
+    } else {
+      // Normal movement - use base window size
+      adaptiveWindowSize = this.config.smoothingWindowSize;
+    }
+
+    return Math.round(Math.max(this.config.minSmoothingWindowSize, 
+                               Math.min(this.config.maxSmoothingWindowSize, adaptiveWindowSize)));
+  }
+
+  /**
+   * Apply multi-frame smoothing for general stabilization
+   * Uses an adaptive window of recent smoothed frames to reduce jitter
+   * Adapts to movement speed and momentum changes
+   */
+  _applyMultiFrameSmoothing(currentDecomp, state, deltaTime) {
+    if (!this.config.multiFrameSmoothing || !currentDecomp) {
+      return currentDecomp;
+    }
+
+    // Add current to history
+    state.smoothedPositionHistory.push(currentDecomp.position.clone());
+    state.smoothedRotationHistory.push(currentDecomp.rotation.clone());
+    state.smoothedScaleHistory.push(currentDecomp.scale.clone());
+
+    // Calculate adaptive window size based on movement
+    const adaptiveWindowSize = this._calculateAdaptiveWindowSize(state, deltaTime);
+
+    // Maintain window size (use adaptive size)
+    while (state.smoothedPositionHistory.length > adaptiveWindowSize) {
+      state.smoothedPositionHistory.shift();
+      state.smoothedRotationHistory.shift();
+      state.smoothedScaleHistory.shift();
+    }
+
+    // Need at least 2 frames for averaging
+    if (state.smoothedPositionHistory.length < 2) {
+      return currentDecomp;
+    }
+
+    // Calculate movement characteristics for adaptive weighting
+    const linearSpeed = state.velocity.length();
+    state.tempQuaternion.identity();
+    const angularSpeed = Math.abs(state.angularVelocity.angleTo(state.tempQuaternion));
+    const accelerationMagnitude = state.acceleration.length();
+    
+    // Adaptive weighting: when accelerating or moving fast, give more weight to recent frames
+    // When static/slow, distribute weight more evenly across window
+    const isAccelerating = accelerationMagnitude > this.config.accelerationThreshold;
+    const isFast = linearSpeed > this.config.velocityThreshold || angularSpeed > this.config.angularVelocityThreshold;
+    
+    // Weight distribution factor: 1.0 = all weight on recent, 0.5 = even distribution
+    const weightDistribution = isAccelerating ? 0.9 : (isFast ? 0.8 : 0.6);
+
+    // Calculate weighted average with adaptive weighting
+    const n = state.smoothedPositionHistory.length;
+    let totalWeight = 0;
+    state.tempVector.set(0, 0, 0);
+    state.tempVector2.set(0, 0, 0);
+    
+    // For quaternions, we'll use sequential slerp (more accurate than linear blend)
+    // Start with the oldest quaternion
+    state.tempQuaternion.copy(state.smoothedRotationHistory[0]);
+    
+    // Calculate weighted position average with adaptive weighting
+    for (let i = 0; i < n; i++) {
+      // Adaptive weighting: more weight to recent frames when movement is changing
+      // Base weight increases linearly, but distribution factor adjusts how much
+      const baseWeight = (i + 1) / n;
+      const weight = baseWeight * weightDistribution + (1 - weightDistribution) / n;
+      totalWeight += weight;
+
+      // Accumulate weighted position
+      state.tempVector2.copy(state.smoothedPositionHistory[i]);
+      state.tempVector2.multiplyScalar(weight);
+      state.tempVector.add(state.tempVector2);
+    }
+
+    // Normalize position
+    state.tempVector.divideScalar(totalWeight);
+    
+    // For quaternions, use sequential slerp with adaptive weights
+    let accumulatedWeight = 0;
+    for (let i = 1; i < n; i++) {
+      const baseWeight = (i + 1) / n;
+      const weight = baseWeight * weightDistribution + (1 - weightDistribution) / n;
+      const t = weight / (accumulatedWeight + weight);
+      state.tempQuaternion.slerp(state.smoothedRotationHistory[i], t);
+      accumulatedWeight += weight;
+    }
+    
+    // Average scale with adaptive weighting
+    state.tempVector2.set(0, 0, 0);
+    for (let i = 0; i < n; i++) {
+      const baseWeight = (i + 1) / n;
+      const weight = baseWeight * weightDistribution + (1 - weightDistribution) / n;
+      state.tempVector2.add(state.smoothedScaleHistory[i].clone().multiplyScalar(weight));
+    }
+    state.tempVector2.divideScalar(totalWeight);
+
+    return {
+      position: state.tempVector.clone(),
+      rotation: state.tempQuaternion.clone(),
+      scale: state.tempVector2.clone()
+    };
+  }
+
+  /**
+   * Apply adaptive smoothing with general stabilization
    */
   _applySmoothing(current, previous, state, deltaTime) {
     if (!previous || !current) {
@@ -304,13 +486,19 @@ export class MatrixPostProcessor {
       return state.tempMatrix;
     }
 
-    // Calculate movement speed
-    const linearSpeed = state.velocity.length();
-    state.tempQuaternion.identity();
-    const angularSpeed = Math.abs(state.angularVelocity.angleTo(state.tempQuaternion));
+    // Step 1: Apply general stabilization (base smoothing)
+    let stabilizationFactor = 0;
+    if (this.config.stabilizationEnabled) {
+      stabilizationFactor = this.config.stabilizationStrength;
+    }
 
-    // Adapt smoothing factor based on movement speed
+    // Step 2: Calculate adaptive smoothing based on movement speed (additional smoothing)
+    let adaptiveSmoothingFactor = 0;
     if (this.config.enableAdaptiveParams) {
+      const linearSpeed = state.velocity.length();
+      state.tempQuaternion.identity();
+      const angularSpeed = Math.abs(state.angularVelocity.angleTo(state.tempQuaternion));
+
       const speedRatio = Math.min(
         linearSpeed / this.config.velocityThreshold,
         angularSpeed / this.config.angularVelocityThreshold
@@ -322,23 +510,40 @@ export class MatrixPostProcessor {
       
       // Smoothly adapt the smoothing factor
       state.currentSmoothingFactor += (targetSmoothing - state.currentSmoothingFactor) * this.config.adaptationRate;
+      adaptiveSmoothingFactor = state.currentSmoothingFactor;
     }
 
-    const smoothingFactor = state.currentSmoothingFactor;
+    // Combine stabilization and adaptive smoothing
+    // Use the maximum of the two (more aggressive smoothing wins)
+    const totalSmoothingFactor = Math.max(stabilizationFactor, adaptiveSmoothingFactor);
 
     // Apply exponential smoothing (reuse temp objects)
-    state.tempVector.lerpVectors(prev.position, curr.position, 1 - smoothingFactor);
-    state.tempQuaternion.slerpQuaternions(prev.rotation, curr.rotation, 1 - smoothingFactor);
-    state.tempVector2.lerpVectors(prev.scale, curr.scale, 1 - smoothingFactor);
+    state.tempVector.lerpVectors(prev.position, curr.position, 1 - totalSmoothingFactor);
+    state.tempQuaternion.slerpQuaternions(prev.rotation, curr.rotation, 1 - totalSmoothingFactor);
+    state.tempVector2.lerpVectors(prev.scale, curr.scale, 1 - totalSmoothingFactor);
+
+    // Step 3: Apply multi-frame smoothing for additional stabilization
+    let finalDecomp = {
+      position: state.tempVector.clone(),
+      rotation: state.tempQuaternion.clone(),
+      scale: state.tempVector2.clone()
+    };
+
+    if (this.config.multiFrameSmoothing) {
+      const multiFrameResult = this._applyMultiFrameSmoothing(finalDecomp, state, deltaTime);
+      if (multiFrameResult) {
+        finalDecomp = multiFrameResult;
+      }
+    }
 
     // Validate smoothed values before composing
-    if (!state.tempVector || !state.tempQuaternion || !state.tempVector2) {
+    if (!finalDecomp.position || !finalDecomp.rotation || !finalDecomp.scale) {
       state.tempMatrix.copy(current);
       return state.tempMatrix;
     }
 
     // Reuse tempMatrix for composition
-    state.tempMatrix.compose(state.tempVector, state.tempQuaternion, state.tempVector2);
+    state.tempMatrix.compose(finalDecomp.position, finalDecomp.rotation, finalDecomp.scale);
     return state.tempMatrix;
   }
 
@@ -674,6 +879,27 @@ export class MatrixPostProcessor {
 
       // Calculate velocity
       const motion = this._calculateVelocity(matrix, state.previousMatrix, deltaTime);
+      
+      // Calculate acceleration (change in velocity)
+      if (deltaTime > 0 && state.previousVelocity) {
+        state.acceleration.subVectors(motion.linear, state.previousVelocity);
+        state.acceleration.multiplyScalar(1000 / deltaTime); // convert to m/s²
+      } else {
+        state.acceleration.set(0, 0, 0);
+        // Initialize previous velocity on first frame
+        if (!state.previousVelocity) {
+          state.previousVelocity = new Vector3();
+        }
+        if (!state.previousAngularVelocity) {
+          state.previousAngularVelocity = new Quaternion();
+        }
+      }
+      
+      // Store current velocity for next frame's acceleration calculation
+      state.previousVelocity.copy(motion.linear);
+      state.previousAngularVelocity.copy(motion.angular);
+      
+      // Update current velocity
       state.velocity.copy(motion.linear);
       state.angularVelocity.copy(motion.angular);
 
@@ -733,7 +959,31 @@ export class MatrixPostProcessor {
    * Update configuration
    */
   updateConfig(newConfig) {
+    const oldConfig = { ...this.config };
     Object.assign(this.config, newConfig);
+    
+    // Log config changes for debugging
+    if (this.config.debugMode) {
+      const changedKeys = Object.keys(newConfig).filter(key => 
+        oldConfig[key] !== this.config[key]
+      );
+      if (changedKeys.length > 0) {
+        const changes = changedKeys.reduce((acc, key) => {
+          acc[key] = { from: oldConfig[key], to: this.config[key] };
+          return acc;
+        }, {});
+        console.log('[MindAR PostProcessor] Config updated:', changes);
+      }
+    }
+    
+    // Reset adaptive smoothing factors for all targets when smoothing config changes
+    // This ensures the new smoothing factors take effect immediately
+    if (newConfig.minSmoothingFactor !== undefined || newConfig.maxSmoothingFactor !== undefined) {
+      this.targetStates.forEach((state) => {
+        // Reset to midpoint of new range
+        state.currentSmoothingFactor = (this.config.minSmoothingFactor + this.config.maxSmoothingFactor) / 2;
+      });
+    }
   }
 
   /**
