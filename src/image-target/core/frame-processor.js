@@ -343,7 +343,7 @@ class FrameProcessor {
     if (perfStats && perfStats.frameCount > 0 && perfStats.frameCount % 60 === 0) {
       const memoryStats = this.memoryManager.getMemoryStats();
       const skipStats = this.smartScheduler.getSkipStats();
-      this.logger.info('Performance status', {
+      this.logger.debug('Performance status', {
         quality: perfStats.quality,
         qualityLevel: perfStats.qualityLevel,
         avgFPS: perfStats.currentFPS,

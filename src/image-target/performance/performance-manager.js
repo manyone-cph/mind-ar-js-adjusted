@@ -81,7 +81,7 @@ class PerformanceManager {
       const newQualityLevel = this.getQualityLevel();
       const avgFPS = (1000 / avgFrameTime).toFixed(1);
       
-      this.logger.info('Quality level changed', {
+      this.logger.debug('Quality level changed', {
         oldQuality: oldQuality.toFixed(2),
         newQuality: newQuality.toFixed(2),
         oldQualityLevel,
